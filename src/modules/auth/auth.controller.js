@@ -22,9 +22,12 @@ const login = async (req, res) => {
     try {
         const { username, password } = req.body;
         const user = await User.findOne({ username });
+        if (!user) {
+            return res.status(400).json({ message: 'Tên đăng nhập không tồn tại' });
+        }
         const isMatch = await bcrypt.compare(password, user.password);
-        if (!user || !isMatch) {
-            return res.status(400).json({ message: 'Tên đăng nhập hoặc mật khẩu không đúng' });
+        if (!isMatch) {
+            return res.status(400).json({ message: 'Mật khẩu không đúng' });
         }
         const token = jwt.sign(
             { id: user._id },
