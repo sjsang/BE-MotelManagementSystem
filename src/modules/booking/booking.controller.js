@@ -36,14 +36,15 @@ function calculateAmount(booking, priceConfig) {
         extraCharge = extraH * typePrices.hourly_extra;
       }
     } else {
+      // Ca ngày: ≤30p = hourly_first, ≤2h = hourly_2h, >2h = hourly_2h + phụ thu
       if (diffMinutes <= 30) {
-        basePrice = typePrices.hourly_first || 80000;
+        basePrice = typePrices.hourly_first ?? typePrices.hourly_2h ?? 0;
       } else if (diffHours <= 2) {
-        basePrice = typePrices.hourly_2h || 100000;
+        basePrice = typePrices.hourly_2h ?? typePrices.hourly_first ?? 0;
       } else {
-        basePrice = typePrices.hourly_2h || 100000;
+        basePrice = typePrices.hourly_2h ?? typePrices.hourly_first ?? 0;
         const extraH = Math.ceil(diffHours - 2);
-        extraCharge = extraH * typePrices.hourly_extra;
+        extraCharge = extraH * (typePrices.hourly_extra ?? 0);
       }
     }
   }
@@ -101,9 +102,15 @@ exports.checkIn = async (req, res) => {
       : priceConfig.dayShift[room.type === 'double' ? 'double' : 'single'];
 
     let basePrice = 0;
-    if (bookingType === 'fullday') basePrice = typePrices.fullday;
-    else if (bookingType === 'overnight') basePrice = typePrices.overnight;
-    else if (bookingType === 'hourly') basePrice = shift === 'night' ? typePrices.hourly_first : (typePrices.hourly_first || 80000);
+    if (bookingType === 'fullday') basePrice = typePrices.fullday ?? 0;
+    else if (bookingType === 'overnight') basePrice = typePrices.overnight ?? 0;
+    else if (bookingType === 'hourly') {
+      // Ca đêm: giá giờ đầu tiên
+      // Ca ngày: hourly_first (≤30p). Phòng đôi không có hourly_first → fallback hourly_2h
+      basePrice = shift === 'night'
+        ? (typePrices.hourly_first ?? 0)
+        : (typePrices.hourly_first ?? typePrices.hourly_2h ?? 0);
+    }
 
     const booking = new Booking({
       room: roomId,
