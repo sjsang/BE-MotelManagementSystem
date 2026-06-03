@@ -1,77 +1,68 @@
-const Room = require('./room.model');
+const Room = require('../room/room.model');
+const Booking = require('../booking/booking.model');
 
-const getAllRooms = async (req, res) => {
-    try {
-        const rooms = await Room.find();
-        res.status(200).json(rooms);
-    } catch (error) {
-        res.status(500).json({ message: 'Lỗi khi lấy danh sách phòng', error: error.message });
-    }
+// GET all rooms with current booking info
+exports.getAllRooms = async (req, res) => {
+  try {
+    const rooms = await Room.find().sort({ floor: 1, roomNumber: 1 });
+    const activeBookings = await Booking.find({ status: 'active' });
+    const bookingMap = {};
+    activeBookings.forEach(b => { bookingMap[b.roomNumber] = b; });
+
+    const result = rooms.map(r => ({
+      ...r.toObject(),
+      currentBooking: bookingMap[r.roomNumber] || null
+    }));
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 };
 
-const getRoomById = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const room = await Room.findById(id);
-        if (!room) {
-            return res.status(404).json({ message: 'Không tìm thấy phòng' });
-        }
-        res.status(200).json(room);
-    } catch (error) {
-        res.status(500).json({ message: 'Lỗi khi lấy thông tin phòng', error: error.message });
-    }
+// GET single room
+exports.getRoomById = async (req, res) => {
+  try {
+    const room = await Room.findById(req.params.id);
+    if (!room) return res.status(404).json({ error: 'Không tìm thấy phòng' });
+    const booking = await Booking.findOne({ roomNumber: room.roomNumber, status: 'active' });
+    res.json({ ...room.toObject(), currentBooking: booking });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 };
 
-const createRoom = async (req, res) => {
-    try {
-        const { code, pricePerHour, pricePerDay } = req.body;
-        const existingRoom = await Room.findOne({ code });
-        if (existingRoom) {
-            return res.status(400).json({ message: 'Mã phòng đã tồn tại' });
-        }
-        const newRoom = new Room({ code, pricePerHour, pricePerDay });
-        await newRoom.save();
-        res.status(201).json(newRoom);
-    } catch (error) {
-        res.status(500).json({ message: 'Lỗi khi tạo phòng', error: error.message });
-    }
+// POST create room
+exports.createRoom = async (req, res) => {
+  try {
+    const room = new Room(req.body);
+    await room.save();
+    res.status(201).json(room);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 };
 
-const updateRoom = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { code, pricePerHour, pricePerDay, status } = req.body;
-        const updatedRoom = await Room.findByIdAndUpdate(
-            id,
-            { code, pricePerHour, pricePerDay, status },
-            { new: true, runValidators: true }
-        );
-        if (!updatedRoom) {
-            return res.status(404).json({ message: 'Không tìm thấy phòng' });
-        }
-        res.status(200).json(updatedRoom);
-    } catch (error) {
-        res.status(500).json({ message: 'Lỗi khi cập nhật phòng', error: error.message });
-    }
+// PUT update room
+exports.updateRoom = async (req, res) => {
+  try {
+    const room = await Room.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+    if (!room) return res.status(404).json({ error: 'Không tìm thấy phòng' });
+    res.json(room);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 };
 
-const deleteRoom = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const deletedRoom = await Room.findByIdAndDelete(id);
-        if (!deletedRoom) {
-            return res.status(404).json({ message: 'Không tìm thấy phòng' });
-        }
-        res.status(200).json({ message: 'Xóa phòng thành công' });
-    } catch (error) {
-        res.status(500).json({ message: 'Lỗi khi xóa phòng', error: error.message });
-    }
-};
-
-module.exports = {
-    getAllRooms,
-    getRoomById,
-    createRoom,
-    updateRoom,
-    deleteRoom
+// DELETE room
+exports.deleteRoom = async (req, res) => {
+  try {
+    const room = await Room.findById(req.params.id);
+    if (!room) return res.status(404).json({ error: 'Không tìm thấy phòng' });
+    const active = await Booking.findOne({ roomNumber: room.roomNumber, status: 'active' });
+    if (active) return res.status(400).json({ error: 'Phòng đang có khách, không thể xóa' });
+    await Room.findByIdAndDelete(req.params.id);
+    res.json({ message: 'Đã xóa phòng' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 };

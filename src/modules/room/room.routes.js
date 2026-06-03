@@ -1,21 +1,20 @@
 const express = require('express');
 const router = express.Router();
-const authMiddleware = require('../../middlewares/auth.middleware');
+const roomController = require('./room.controller'); // Bạn hãy điều chỉnh lại đường dẫn chính xác tới file controller ở trên
 
-router.use(authMiddleware);
+// GET all rooms with current booking info
+router.get('/', roomController.getAllRooms);
 
-const {
-    getAllRooms,
-    getRoomById,
-    createRoom,
-    updateRoom,
-    deleteRoom
-} = require('./room.controller');
+// GET single room
+router.get('/:id', roomController.getRoomById);
 
-router.get('/', getAllRooms);
-router.post('/', createRoom);
-router.get('/:id', getRoomById);
-router.put('/:id', updateRoom);
-router.delete('/:id', deleteRoom);
+// POST create room
+router.post('/', roomController.createRoom);
+
+// PUT update room
+router.put('/:id', roomController.updateRoom);
+
+// DELETE room
+router.delete('/:id', roomController.deleteRoom);
 
 module.exports = router;
