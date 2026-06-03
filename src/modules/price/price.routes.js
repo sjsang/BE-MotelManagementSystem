@@ -17,4 +17,12 @@ router.put('/:id', priceConfigController.updateConfig);
 // DELETE config
 router.delete('/:id', priceConfigController.deleteConfig);
 
+// ── Dịch vụ trong bảng giá ──────────────────────────────────────────────────
+// Lưu ý: /reorder phải đứng TRƯỚC /:serviceId để không bị nhận nhầm là id
+router.get   ('/:id/services',                   priceConfigController.getServices);
+router.post  ('/:id/services',                   priceConfigController.addService);
+router.post  ('/:id/services/reorder',           priceConfigController.reorderServices);
+router.put   ('/:id/services/:serviceId',        priceConfigController.updateService);
+router.delete('/:id/services/:serviceId',        priceConfigController.deleteService);
+
 module.exports = router;

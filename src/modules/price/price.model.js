@@ -38,9 +38,10 @@ const priceConfigSchema = new mongoose.Schema({
 
   // Dịch vụ
   services: [{
-    name: String,
-    price: Number,
-    unit: String
+    _id:   { type: mongoose.Schema.Types.ObjectId, auto: true },
+    name:  { type: String,  required: true },
+    price: { type: Number, required: true, min: 0 },
+    unit:  { type: String,  default: 'cái' },
   }],
 
   // Áp dụng từ ngày / đến ngày (null = không giới hạn)

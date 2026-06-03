@@ -78,3 +78,78 @@ exports.deleteConfig = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+
+// ─── Service CRUD ────────────────────────────────────────────────────────────
+
+// Helper: lấy config và tìm service, trả lỗi nếu không có
+async function getConfigAndService(req, res) {
+  const config = await PriceConfig.findById(req.params.id);
+  if (!config) { res.status(404).json({ error: 'Không tìm thấy bảng giá' }); return null; }
+  const svc = config.services.id(req.params.serviceId);
+  if (!svc) { res.status(404).json({ error: 'Không tìm thấy dịch vụ' }); return null; }
+  return { config, svc };
+}
+
+// GET /prices/:id/services — danh sách dịch vụ
+exports.getServices = async (req, res) => {
+  try {
+    const config = await PriceConfig.findById(req.params.id).select('services');
+    if (!config) return res.status(404).json({ error: 'Không tìm thấy bảng giá' });
+    res.json(config.services);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+};
+
+// POST /prices/:id/services — thêm dịch vụ { name, price, unit? }
+exports.addService = async (req, res) => {
+  try {
+    const { name, price, unit } = req.body;
+    if (!name || price == null) return res.status(400).json({ error: 'Thiếu name hoặc price' });
+    const config = await PriceConfig.findById(req.params.id);
+    if (!config) return res.status(404).json({ error: 'Không tìm thấy bảng giá' });
+    config.services.push({ name, price: Number(price), unit: unit || 'cái' });
+    await config.save();
+    res.status(201).json(config.services[config.services.length - 1]);
+  } catch (err) { res.status(400).json({ error: err.message }); }
+};
+
+// PUT /prices/:id/services/:serviceId — sửa dịch vụ
+exports.updateService = async (req, res) => {
+  try {
+    const result = await getConfigAndService(req, res);
+    if (!result) return;
+    const { config, svc } = result;
+    if (req.body.name  != null) svc.name  = req.body.name;
+    if (req.body.price != null) svc.price = Number(req.body.price);
+    if (req.body.unit  != null) svc.unit  = req.body.unit;
+    await config.save();
+    res.json(svc);
+  } catch (err) { res.status(400).json({ error: err.message }); }
+};
+
+// DELETE /prices/:id/services/:serviceId — xóa dịch vụ
+exports.deleteService = async (req, res) => {
+  try {
+    const result = await getConfigAndService(req, res);
+    if (!result) return;
+    const { config, svc } = result;
+    svc.deleteOne();
+    await config.save();
+    res.json({ message: 'Đã xóa dịch vụ' });
+  } catch (err) { res.status(400).json({ error: err.message }); }
+};
+
+// POST /prices/:id/services/reorder — sắp xếp lại { order: ['id1','id2',...] }
+exports.reorderServices = async (req, res) => {
+  try {
+    const { order } = req.body;
+    if (!Array.isArray(order)) return res.status(400).json({ error: 'order phải là mảng serviceId' });
+    const config = await PriceConfig.findById(req.params.id);
+    if (!config) return res.status(404).json({ error: 'Không tìm thấy bảng giá' });
+    const map = new Map(config.services.map(s => [s._id.toString(), s.toObject()]));
+    const ordered   = order.map(id => map.get(id)).filter(Boolean);
+    const remaining = config.services.filter(s => !order.includes(s._id.toString())).map(s => s.toObject());
+    config.services = [...ordered, ...remaining];
+    await config.save();
+    res.json(config.services);
+  } catch (err) { res.status(400).json({ error: err.message }); }
+};
