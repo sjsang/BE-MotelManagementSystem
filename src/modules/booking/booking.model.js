@@ -34,6 +34,8 @@ const bookingSchema = new mongoose.Schema({
 
   status: { type: String, enum: ['active', 'completed', 'cancelled'], default: 'active' },
   notes: { type: String, default: '' },
+  is_reported: { type: Boolean, default: false },
+  reported: { type: Date },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Booking', bookingSchema);

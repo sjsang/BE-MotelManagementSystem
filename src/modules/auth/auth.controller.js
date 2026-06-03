@@ -4,7 +4,13 @@ const User = require('./auth.model');
 
 const register = async (req, res) => {
     try {
-        const { username, password } = req.body;
+        const { username, password, confirmPassword } = req.body;
+        if (!username || !password || !confirmPassword) {
+            return res.status(400).json({ message: 'Vui lòng nhập đầy đủ tên đăng nhập, mật khẩu và xác nhận mật khẩu' });
+        }
+        if (password !== confirmPassword) {
+            return res.status(400).json({ message: 'Mật khẩu xác nhận không khớp' });
+        }
         const existingUser = await User.findOne({ username });
         if (existingUser) {
             return res.status(400).json({ message: 'Tên đăng nhập đã tồn tại' });

@@ -12,6 +12,8 @@ app.use(express.json());
 app.use('/api/rooms', require('../src/modules/room/room.routes'));
 app.use('/api/bookings', require('../src/modules/booking/booking.routes'));
 app.use('/api/prices', require('../src/modules/price/price.routes'));
+app.use('/api/auth', require('../src/modules/auth/auth.routes'));
+app.use('/api/customers', require('../src/modules/customer/customer.routes'));
 
 // Health check
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date() }));
@@ -19,6 +21,15 @@ app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date() }
 // Seed initial rooms if none exist
 async function seedRooms() {
   const Room = require('./modules/room/room.model');
+  
+  // Tự động xóa index 'code_1' cũ nếu còn sót lại từ schema cũ để tránh lỗi trùng lặp khi seed
+  try {
+    await Room.collection.dropIndex('code_1');
+    console.log('✅ Đã xóa index code_1 cũ thành công');
+  } catch (err) {
+    // Bỏ qua nếu index không tồn tại hoặc collection chưa khởi tạo
+  }
+
   const count = await Room.countDocuments();
   if (count === 0) {
     const rooms = [];
