@@ -41,7 +41,7 @@ const login = async (req, res) => {
             { expiresIn: '30d' });
         res.json({ token });
     } catch (error) {
-        res.status(500).json({ message: 'Lỗi máy chủ' });
+        res.status(500).json({ message: 'Lỗi máy chủ' + error.message });
     }
 };
 
@@ -53,7 +53,7 @@ const getUserInfo = async (req, res) => {
         }
         res.json(user);
     } catch (error) {
-        res.status(500).json({ message: 'Lỗi máy chủ' });
+        res.status(500).json({ message: 'Lỗi máy chủ' + error.message });
     }
 };
 
