@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const bookingController = require('./booking.controller'); // Bạn hãy điều chỉnh lại đường dẫn chính xác tới file controller vừa tạo ở trên
+const bookingController = require('./booking.controller'); 
+const authMiddleware = require('../../middlewares/auth.middleware');
 
 // GET all bookings
 router.get('/', bookingController.getAllBookings);
@@ -18,6 +19,6 @@ router.post('/checkin', bookingController.checkIn);
 router.post('/checkout/:bookingId', bookingController.checkOut);
 
 // PUT update booking (add services, notes)
-router.put('/:id', bookingController.updateBooking);
+router.put('/:id', authMiddleware, bookingController.updateBooking);
 
 module.exports = router;

@@ -178,6 +178,15 @@ exports.checkOut = async (req, res) => {
 // PUT update booking (add services, notes)
 exports.updateBooking = async (req, res) => {
   try {
+    // Nếu có yêu cầu ghi nhận khai báo lưu trú, tự động điền người thực hiện (reported_by)
+    if (req.body.is_reported && req.user) {
+      const User = require('../auth/auth.model');
+      const user = await User.findById(req.user.id);
+      if (user) {
+        req.body.reported_by = user.username;
+      }
+    }
+
     const booking = await Booking.findByIdAndUpdate(req.params.id, req.body, { new: true });
     if (!booking) return res.status(404).json({ error: 'Không tìm thấy booking' });
     res.json(booking);
