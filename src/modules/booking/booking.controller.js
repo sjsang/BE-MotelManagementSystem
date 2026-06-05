@@ -24,7 +24,7 @@ function calculateAmount(booking, priceConfig) {
     }
   } else if (bookingType === 'overnight') {
     basePrice = typePrices.overnight || priceConfig.dayShift[room_type === 'double' ? 'double' : 'single'].overnight;
-    if (diffHours > 14) { // qua 8h sáng
+    if (diffHours > 14) {
       const extraH = Math.ceil(diffHours - 14);
       extraCharge = extraH * (priceConfig.lateEarlyFee || 20000);
     }
@@ -36,7 +36,6 @@ function calculateAmount(booking, priceConfig) {
         extraCharge = extraH * typePrices.hourly_extra;
       }
     } else {
-      // Ca ngày: ≤30p = hourly_first, ≤2h = hourly_2h, >2h = hourly_2h + phụ thu
       if (diffMinutes <= 30) {
         basePrice = typePrices.hourly_first ?? typePrices.hourly_2h ?? 0;
       } else if (diffHours <= 2) {
@@ -55,20 +54,121 @@ function calculateAmount(booking, priceConfig) {
   return { basePrice, extraCharge, servicesCharge, totalAmount, extraHours: Math.max(0, Math.ceil(diffHours - (bookingType === 'fullday' ? 24 : bookingType === 'overnight' ? 14 : 2))) };
 }
 
-// GET all bookings
+// Hàm parse date preset thành { from, to }
+function parseDatePreset(preset) {
+  const now = new Date();
+  const startOfDay = (d) => { const x = new Date(d); x.setHours(0,0,0,0); return x; };
+  const endOfDay   = (d) => { const x = new Date(d); x.setHours(23,59,59,999); return x; };
+
+  switch (preset) {
+    case 'today': {
+      return { from: startOfDay(now), to: endOfDay(now) };
+    }
+    case 'yesterday': {
+      const y = new Date(now); y.setDate(y.getDate() - 1);
+      return { from: startOfDay(y), to: endOfDay(y) };
+    }
+    case 'this_week': {
+      const day = now.getDay(); // 0=Sun
+      const mon = new Date(now); mon.setDate(now.getDate() - ((day + 6) % 7));
+      return { from: startOfDay(mon), to: endOfDay(now) };
+    }
+    case 'last_week': {
+      const day = now.getDay();
+      const thisMonday = new Date(now); thisMonday.setDate(now.getDate() - ((day + 6) % 7));
+      const lastMon = new Date(thisMonday); lastMon.setDate(thisMonday.getDate() - 7);
+      const lastSun = new Date(thisMonday); lastSun.setDate(thisMonday.getDate() - 1);
+      return { from: startOfDay(lastMon), to: endOfDay(lastSun) };
+    }
+    case 'this_month': {
+      const first = new Date(now.getFullYear(), now.getMonth(), 1);
+      return { from: startOfDay(first), to: endOfDay(now) };
+    }
+    case 'last_month': {
+      const first = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const last  = new Date(now.getFullYear(), now.getMonth(), 0);
+      return { from: startOfDay(first), to: endOfDay(last) };
+    }
+    default:
+      return null;
+  }
+}
+
+// GET all bookings — hỗ trợ lọc chi tiết + lazy loading (cursor-based)
 exports.getAllBookings = async (req, res) => {
   try {
-    const { status, roomNumber, date } = req.query;
+    const {
+      status,
+      roomNumber,
+      bookingType,   // hourly | overnight | fullday
+      room_type,     // single | double
+      shift,         // day | night
+      dateField,     // checkIn | checkOut | createdAt (default: checkIn)
+      preset,        // today | yesterday | this_week | last_week | this_month | last_month
+      from,          // ISO date string (khoảng ngày tuỳ chỉnh)
+      to,
+      search,        // tìm theo guestName / guestPhone / roomNumber
+      // Lazy loading
+      limit: limitStr,
+      cursor,        // _id cuối cùng của trang trước (cursor-based pagination)
+    } = req.query;
+
     const filter = {};
-    if (status) filter.status = status;
-    if (roomNumber) filter.roomNumber = roomNumber;
-    if (date) {
-      const d = new Date(date);
-      const nextD = new Date(d); nextD.setDate(nextD.getDate() + 1);
-      filter.checkIn = { $gte: d, $lt: nextD };
+
+    // ── Bộ lọc trạng thái / loại phòng / ca ─────────────────────────────
+    if (status)      filter.status      = status;
+    if (bookingType) filter.bookingType = bookingType;
+    if (room_type)   filter.room_type   = room_type;
+    if (shift)       filter.shift       = shift;
+    if (roomNumber)  filter.roomNumber  = roomNumber;
+
+    // ── Tìm kiếm text ───────────────────────────────────────────────────
+    if (search && search.trim()) {
+      const regex = new RegExp(search.trim(), 'i');
+      filter.$or = [
+        { guestName:  regex },
+        { guestPhone: regex },
+        { roomNumber: regex },
+        { guestId:    regex },
+      ];
     }
-    const bookings = await Booking.find(filter).sort({ createdAt: -1 }).limit(200);
-    res.json(bookings);
+
+    // ── Lọc theo ngày ───────────────────────────────────────────────────
+    const field = ['checkIn', 'checkOut', 'createdAt'].includes(dateField) ? dateField : 'checkIn';
+
+    let dateRange = null;
+    if (preset) {
+      dateRange = parseDatePreset(preset);
+    } else if (from || to) {
+      dateRange = {
+        from: from ? new Date(from) : null,
+        to:   to   ? new Date(to)   : null,
+      };
+    }
+
+    if (dateRange) {
+      filter[field] = {};
+      if (dateRange.from) filter[field].$gte = dateRange.from;
+      if (dateRange.to)   filter[field].$lte = dateRange.to;
+    }
+
+    // ── Lazy loading (cursor-based) ──────────────────────────────────────
+    const PAGE_LIMIT = Math.min(parseInt(limitStr) || 30, 100);
+    if (cursor) {
+      // Lấy các bản ghi có _id < cursor (mới hơn được sort trước → cursor là _id nhỏ nhất đã thấy)
+      filter._id = { $lt: cursor };
+    }
+
+    const bookings = await Booking.find(filter)
+      .sort({ _id: -1 })
+      .limit(PAGE_LIMIT + 1); // lấy thêm 1 để biết còn trang sau không
+
+    const hasMore = bookings.length > PAGE_LIMIT;
+    if (hasMore) bookings.pop();
+
+    const nextCursor = hasMore ? bookings[bookings.length - 1]._id : null;
+
+    res.json({ data: bookings, hasMore, nextCursor });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -105,8 +205,6 @@ exports.checkIn = async (req, res) => {
     if (bookingType === 'fullday') basePrice = typePrices.fullday ?? 0;
     else if (bookingType === 'overnight') basePrice = typePrices.overnight ?? 0;
     else if (bookingType === 'hourly') {
-      // Ca đêm: giá giờ đầu tiên
-      // Ca ngày: hourly_first (≤30p). Phòng đôi không có hourly_first → fallback hourly_2h
       basePrice = shift === 'night'
         ? (typePrices.hourly_first ?? 0)
         : (typePrices.hourly_first ?? typePrices.hourly_2h ?? 0);
@@ -151,7 +249,6 @@ exports.checkOut = async (req, res) => {
     booking.services = req.body.services || booking.services;
     booking.notes = req.body.notes || booking.notes;
 
-    // Recalculate with checkout time
     const { basePrice, extraCharge, servicesCharge, totalAmount, extraHours } = calculateAmount(
       { ...booking.toObject(), room_type: booking.room?.type || 'single' },
       priceConfig
@@ -165,7 +262,6 @@ exports.checkOut = async (req, res) => {
     booking.status = 'completed';
     await booking.save();
 
-    // Update room status
     const room = await Room.findById(booking.room);
     if (room) { room.status = 'cleaning'; await room.save(); }
 
@@ -178,7 +274,6 @@ exports.checkOut = async (req, res) => {
 // PUT update booking (add services, notes)
 exports.updateBooking = async (req, res) => {
   try {
-    // Nếu có yêu cầu ghi nhận khai báo lưu trú, tự động điền người thực hiện (reported_by)
     if (req.body.is_reported && req.user) {
       const User = require('../auth/auth.model');
       const user = await User.findById(req.user.id);
@@ -203,14 +298,13 @@ exports.getRevenueStats = async (req, res) => {
     if (from || to) {
       filter.checkOut = {};
       if (from) filter.checkOut.$gte = new Date(from);
-      if (to) filter.checkOut.$lte = new Date(to);
+      if (to)   filter.checkOut.$lte = new Date(to);
     }
     const bookings = await Booking.find(filter);
     const total = bookings.reduce((s, b) => s + (b.totalAmount || 0), 0);
     const byType = { hourly: 0, overnight: 0, fullday: 0 };
     bookings.forEach(b => { byType[b.bookingType] = (byType[b.bookingType] || 0) + (b.totalAmount || 0); });
 
-    // Group by day
     const byDay = {};
     bookings.forEach(b => {
       const day = new Date(b.checkOut).toISOString().split('T')[0];
