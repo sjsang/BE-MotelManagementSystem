@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const invoiceSchema = new mongoose.Schema({
     booking: { type: mongoose.Schema.Types.ObjectId, ref: 'Booking', required: true },
     invoiceNumber: { type: String, required: true, unique: true }, // VD: INV-20240607-001

@@ -1,5 +1,5 @@
-const Invoice = require('../models/invoice.model');
-const Booking = require('../models/booking.model');
+const Invoice = require('./invoice.model');
+const Booking = require('../booking/booking.model');
 
 // Helper: sinh invoiceNumber dạng INV-YYYYMMDD-XXX
 const generateInvoiceNumber = async () => {
