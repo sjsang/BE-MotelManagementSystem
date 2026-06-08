@@ -19,6 +19,7 @@ const invoiceSchema = new mongoose.Schema({
     extraCharge: { type: Number, default: 0 },
     servicesCharge: { type: Number, default: 0 },
     discount: { type: Number, default: 0 },
+    tax: { type: Number, default: 0 },
     paidAmount: { type: Number, default: 0 },
     totalAmount: { type: Number, default: 0 },
 

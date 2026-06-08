@@ -1,40 +1,53 @@
 const Invoice = require('./invoice.model');
 const Booking = require('../booking/booking.model');
+const dayjs = require('dayjs');
+const utc = require('dayjs/plugin/utc');
+const timezone = require('dayjs/plugin/timezone');
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
+
+// Múi giờ chuẩn Việt Nam
+const TZ = 'Asia/Ho_Chi_Minh';
 
 // Helper: sinh invoiceNumber dạng HDYYMMXXX (VD: HD2606001)
 const generateInvoiceNumber = async () => {
-    const today = new Date();
+    // Lấy thời điểm hiện tại theo giờ VN
+    const nowVN = dayjs().tz(TZ);
 
     // Lấy 2 số cuối của năm (VD: 2026 -> '26')
-    const yearStr = String(today.getFullYear()).slice(2);
-    // Lấy tháng và thêm số 0 ở trước nếu là tháng 1-9 (VD: 6 -> '06')
-    const monthStr = String(today.getMonth() + 1).padStart(2, '0');
+    const yearStr = nowVN.format('YY');
+    // Lấy tháng, đã có padding 0 sẵn (VD: 6 -> '06')
+    const monthStr = nowVN.format('MM');
 
-    // Lấy ngày đầu tháng và cuối tháng hiện tại để đếm số hóa đơn trong tháng
-    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1, 0, 0, 0, 0);
-    const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
+    // Đầu tháng và cuối tháng tính theo giờ VN, convert sang UTC để query MongoDB
+    const startOfMonth = nowVN.startOf('month').toDate();
+    const endOfMonth = nowVN.endOf('month').toDate();
 
     // Đếm số lượng hóa đơn đã xuất trong THÁNG
     const count = await Invoice.countDocuments({
         issuedAt: { $gte: startOfMonth, $lte: endOfMonth },
     });
 
-    // Tạo chuỗi 3 số thứ tự (001, 002...). 
+    // Tạo chuỗi 3 số thứ tự (001, 002...).
     // Nếu tháng đó bán được hơn 999 hóa đơn thì nó tự động thành 1000, không lo bị lỗi.
     const seq = String(count + 1).padStart(3, '0');
 
     return `HD${yearStr}${monthStr}${seq}`;
 };
+
 // POST /invoices
-// Body: { bookingId, paymentMethod, discount, issuedBy, notes }
+// Body: { bookingId, discount, tax, issuedBy, notes }
 const createInvoice = async (req, res) => {
     try {
-        const { bookingId, discount = 0, issuedBy = '', notes = '' } = req.body;
+        // Thêm biến tax từ req.body (mặc định là 0 nếu không truyền lên)
+        const { bookingId, discount = 0, tax = 0, issuedBy = '', notes = '' } = req.body;
 
         if (!bookingId) return res.status(400).json({ message: 'bookingId là bắt buộc' });
 
         const booking = await Booking.findById(bookingId).populate('room');
         if (!booking) return res.status(404).json({ message: 'Không tìm thấy booking' });
+
         if (booking.status !== 'completed') {
             return res.status(400).json({ message: 'Booking chưa hoàn thành, không thể xuất hóa đơn' });
         }
@@ -47,7 +60,9 @@ const createInvoice = async (req, res) => {
 
         const invoiceNumber = await generateInvoiceNumber();
         const totalAmount = booking.totalAmount;
-        const paidAmount = totalAmount - discount;
+
+        // Công thức tính Thực thu: (Tổng - Giảm giá) + Thuế
+        const paidAmount = Math.max(0, totalAmount - discount) + tax;
 
         const invoice = await Invoice.create({
             booking: booking._id,
@@ -71,6 +86,7 @@ const createInvoice = async (req, res) => {
             services: booking.services,
 
             discount,
+            tax,
             totalAmount,
             paidAmount,
 
@@ -89,7 +105,7 @@ const createInvoice = async (req, res) => {
 // Query: ?page=1&limit=20&roomNumber=101&guestName=abc&from=2024-06-01&to=2024-06-30&status=issued
 const getInvoices = async (req, res) => {
     try {
-        const { page = 1, limit = 20, roomNumber, guestName, from, to, status, paymentMethod } = req.query;
+        const { page = 1, limit = 20, roomNumber, guestName, from, to, status } = req.query;
 
         const filter = {};
         if (roomNumber) filter.roomNumber = { $regex: roomNumber, $options: 'i' };
@@ -98,8 +114,9 @@ const getInvoices = async (req, res) => {
 
         if (from || to) {
             filter.issuedAt = {};
-            if (from) filter.issuedAt.$gte = new Date(from);
-            if (to) filter.issuedAt.$lte = new Date(new Date(to).setHours(23, 59, 59, 999));
+            // Parse ngày theo giờ VN: from = 0h00 đầu ngày, to = 23h59 cuối ngày
+            if (from) filter.issuedAt.$gte = dayjs.tz(from, TZ).startOf('day').toDate();
+            if (to) filter.issuedAt.$lte = dayjs.tz(to, TZ).endOf('day').toDate();
         }
 
         const skip = (Number(page) - 1) * Number(limit);
