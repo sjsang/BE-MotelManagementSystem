@@ -39,11 +39,4 @@ const bookingSchema = new mongoose.Schema({
   reported_by: { type: String, default: '' },
 }, { timestamps: true });
 
-// Các field thường filter/sort
-invoiceSchema.index({ booking: 1 });           // getInvoiceById populate
-invoiceSchema.index({ issuedAt: -1 });         // sort mới nhất trước
-invoiceSchema.index({ status: 1, issuedAt: -1 }); // filter status + sort
-invoiceSchema.index({ roomNumber: 1, issuedAt: -1 }); // filter theo phòng
-invoiceSchema.index({ guestName: 'text' });    // text search tên khách
-
 module.exports = mongoose.model('Booking', bookingSchema);

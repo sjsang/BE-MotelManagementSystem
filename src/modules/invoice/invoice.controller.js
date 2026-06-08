@@ -1,27 +1,35 @@
 const Invoice = require('./invoice.model');
 const Booking = require('../booking/booking.model');
 
-// Helper: sinh invoiceNumber dạng INV-YYYYMMDD-XXX
+// Helper: sinh invoiceNumber dạng HDYYMMXXX (VD: HD2606001)
 const generateInvoiceNumber = async () => {
     const today = new Date();
-    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, ''); // 20240607
 
-    const startOfDay = new Date(today.setHours(0, 0, 0, 0));
-    const endOfDay = new Date(today.setHours(23, 59, 59, 999));
+    // Lấy 2 số cuối của năm (VD: 2026 -> '26')
+    const yearStr = String(today.getFullYear()).slice(2);
+    // Lấy tháng và thêm số 0 ở trước nếu là tháng 1-9 (VD: 6 -> '06')
+    const monthStr = String(today.getMonth() + 1).padStart(2, '0');
 
+    // Lấy ngày đầu tháng và cuối tháng hiện tại để đếm số hóa đơn trong tháng
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1, 0, 0, 0, 0);
+    const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
+
+    // Đếm số lượng hóa đơn đã xuất trong THÁNG
     const count = await Invoice.countDocuments({
-        issuedAt: { $gte: startOfDay, $lte: endOfDay },
+        issuedAt: { $gte: startOfMonth, $lte: endOfMonth },
     });
 
+    // Tạo chuỗi 3 số thứ tự (001, 002...). 
+    // Nếu tháng đó bán được hơn 999 hóa đơn thì nó tự động thành 1000, không lo bị lỗi.
     const seq = String(count + 1).padStart(3, '0');
-    return `INV-${dateStr}-${seq}`;
-};
 
+    return `HD${yearStr}${monthStr}${seq}`;
+};
 // POST /invoices
 // Body: { bookingId, paymentMethod, discount, issuedBy, notes }
 const createInvoice = async (req, res) => {
     try {
-        const { bookingId, paymentMethod = 'cash', discount = 0, issuedBy = '', notes = '' } = req.body;
+        const { bookingId, discount = 0, issuedBy = '', notes = '' } = req.body;
 
         if (!bookingId) return res.status(400).json({ message: 'bookingId là bắt buộc' });
 
@@ -65,7 +73,6 @@ const createInvoice = async (req, res) => {
             discount,
             totalAmount,
             paidAmount,
-            paymentMethod,
 
             issuedAt: new Date(),
             issuedBy,
@@ -88,7 +95,7 @@ const getInvoices = async (req, res) => {
         if (roomNumber) filter.roomNumber = { $regex: roomNumber, $options: 'i' };
         if (guestName) filter.guestName = { $regex: guestName, $options: 'i' };
         if (status) filter.status = status;
-        if (paymentMethod) filter.paymentMethod = paymentMethod;
+
         if (from || to) {
             filter.issuedAt = {};
             if (from) filter.issuedAt.$gte = new Date(from);

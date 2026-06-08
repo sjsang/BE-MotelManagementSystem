@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 const invoiceSchema = new mongoose.Schema({
     booking: { type: mongoose.Schema.Types.ObjectId, ref: 'Booking', required: true },
-    invoiceNumber: { type: String, required: true, unique: true }, // VD: INV-20240607-001
+    invoiceNumber: { type: String, required: true, unique: true },
 
     // Snapshot thông tin tại thời điểm xuất (tránh bị ảnh hưởng nếu booking bị sửa)
     roomNumber: { type: String, required: true },
@@ -24,10 +24,16 @@ const invoiceSchema = new mongoose.Schema({
 
     services: [{ name: String, price: Number, quantity: Number }],
 
-    paymentMethod: { type: String, enum: ['cash', 'transfer', 'card'], default: 'cash' },
     status: { type: String, enum: ['issued', 'cancelled'], default: 'issued' },
 
     issuedAt: { type: Date, default: Date.now },
     issuedBy: { type: String, default: '' },
     notes: { type: String, default: '' },
 }, { timestamps: true });
+// Các field thường filter/sort
+invoiceSchema.index({ booking: 1 });           // getInvoiceById populate
+invoiceSchema.index({ issuedAt: -1 });         // sort mới nhất trước
+invoiceSchema.index({ status: 1, issuedAt: -1 }); // filter status + sort
+invoiceSchema.index({ roomNumber: 1, issuedAt: -1 }); // filter theo phòng
+invoiceSchema.index({ guestName: 'text' });    // text search tên khách
+module.exports = mongoose.model('Invoice', invoiceSchema);
