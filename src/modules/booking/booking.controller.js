@@ -2,7 +2,12 @@ const Booking = require('../booking/booking.model');
 const Room = require('../room/room.model');
 const PriceConfig = require('../price/price.model');
 
-// Tính tiền dựa trên loại đặt phòng
+// Grace period 15 phút — vượt quá mới tính thêm 1h
+function ceilWithGrace(hours, grace = 0.25) {
+  const floored = Math.floor(hours);
+  return (hours - floored) > grace ? floored + 1 : floored;
+}
+
 function calculateAmount(booking, priceConfig) {
   const { bookingType, shift, room_type, checkIn, checkOut, services } = booking;
   const prices = shift === 'night' ? priceConfig.nightShift : priceConfig.dayShift;
@@ -19,20 +24,20 @@ function calculateAmount(booking, priceConfig) {
   if (bookingType === 'fullday') {
     basePrice = typePrices.fullday || priceConfig.dayShift[room_type === 'double' ? 'double' : 'single'].fullday;
     if (diffHours > 24) {
-      const extraH = Math.ceil(diffHours - 24);
+      const extraH = ceilWithGrace(diffHours - 24);
       extraCharge = extraH * (priceConfig.lateEarlyFee || 20000);
     }
   } else if (bookingType === 'overnight') {
     basePrice = typePrices.overnight || priceConfig.dayShift[room_type === 'double' ? 'double' : 'single'].overnight;
     if (diffHours > 14) {
-      const extraH = Math.ceil(diffHours - 14);
+      const extraH = ceilWithGrace(diffHours - 14);
       extraCharge = extraH * (priceConfig.lateEarlyFee || 20000);
     }
   } else if (bookingType === 'hourly') {
     if (shift === 'night') {
       basePrice = typePrices.hourly_first;
       if (diffHours > 1) {
-        const extraH = Math.ceil(diffHours - 1);
+        const extraH = ceilWithGrace(diffHours - 1);
         extraCharge = extraH * typePrices.hourly_extra;
       }
     } else {
@@ -42,7 +47,7 @@ function calculateAmount(booking, priceConfig) {
         basePrice = typePrices.hourly_2h ?? typePrices.hourly_first ?? 0;
       } else {
         basePrice = typePrices.hourly_2h ?? typePrices.hourly_first ?? 0;
-        const extraH = Math.ceil(diffHours - 2);
+        const extraH = ceilWithGrace(diffHours - 2);
         extraCharge = extraH * (typePrices.hourly_extra ?? 0);
       }
     }
@@ -51,14 +56,35 @@ function calculateAmount(booking, priceConfig) {
   const servicesCharge = (services || []).reduce((sum, s) => sum + (s.price * s.quantity), 0);
   const totalAmount = basePrice + extraCharge + servicesCharge;
 
-  return { basePrice, extraCharge, servicesCharge, totalAmount, extraHours: Math.max(0, Math.ceil(diffHours - (bookingType === 'fullday' ? 24 : bookingType === 'overnight' ? 14 : 2))) };
+  return { basePrice, extraCharge, servicesCharge, totalAmount, extraHours: Math.max(0, ceilWithGrace(diffHours - (bookingType === 'fullday' ? 24 : bookingType === 'overnight' ? 14 : 2))) };
 }
+
+exports.previewCheckout = async (req, res) => {
+  try {
+    const booking = await Booking.findById(req.params.bookingId).populate('room');
+    if (!booking) return res.status(404).json({ error: 'Không tìm thấy booking' });
+    if (booking.status !== 'active') return res.status(400).json({ error: 'Booking không active' });
+
+    const priceConfig = await PriceConfig.findOne({ isActive: true });
+    const { basePrice, extraCharge, extraHours, servicesCharge, totalAmount } = calculateAmount(
+      { ...booking.toObject(), room_type: booking.room?.type || 'single', checkOut: new Date() },
+      priceConfig
+    );
+
+    res.json({
+      basePrice, extraCharge, extraHours, servicesCharge, totalAmount,
+      checkIn: booking.checkIn, checkOutEstimated: new Date()
+    });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+};
 
 // Hàm parse date preset thành { from, to }
 function parseDatePreset(preset) {
   const now = new Date();
-  const startOfDay = (d) => { const x = new Date(d); x.setHours(0,0,0,0); return x; };
-  const endOfDay   = (d) => { const x = new Date(d); x.setHours(23,59,59,999); return x; };
+  const startOfDay = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
+  const endOfDay = (d) => { const x = new Date(d); x.setHours(23, 59, 59, 999); return x; };
 
   switch (preset) {
     case 'today': {
@@ -86,7 +112,7 @@ function parseDatePreset(preset) {
     }
     case 'last_month': {
       const first = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const last  = new Date(now.getFullYear(), now.getMonth(), 0);
+      const last = new Date(now.getFullYear(), now.getMonth(), 0);
       return { from: startOfDay(first), to: endOfDay(last) };
     }
     default:
@@ -116,20 +142,20 @@ exports.getAllBookings = async (req, res) => {
     const filter = {};
 
     // ── Bộ lọc trạng thái / loại phòng / ca ─────────────────────────────
-    if (status)      filter.status      = status;
+    if (status) filter.status = status;
     if (bookingType) filter.bookingType = bookingType;
-    if (room_type)   filter.room_type   = room_type;
-    if (shift)       filter.shift       = shift;
-    if (roomNumber)  filter.roomNumber  = roomNumber;
+    if (room_type) filter.room_type = room_type;
+    if (shift) filter.shift = shift;
+    if (roomNumber) filter.roomNumber = roomNumber;
 
     // ── Tìm kiếm text ───────────────────────────────────────────────────
     if (search && search.trim()) {
       const regex = new RegExp(search.trim(), 'i');
       filter.$or = [
-        { guestName:  regex },
+        { guestName: regex },
         { guestPhone: regex },
         { roomNumber: regex },
-        { guestId:    regex },
+        { guestId: regex },
       ];
     }
 
@@ -142,14 +168,14 @@ exports.getAllBookings = async (req, res) => {
     } else if (from || to) {
       dateRange = {
         from: from ? new Date(from) : null,
-        to:   to   ? new Date(to)   : null,
+        to: to ? new Date(to) : null,
       };
     }
 
     if (dateRange) {
       filter[field] = {};
       if (dateRange.from) filter[field].$gte = dateRange.from;
-      if (dateRange.to)   filter[field].$lte = dateRange.to;
+      if (dateRange.to) filter[field].$lte = dateRange.to;
     }
 
     // ── Lazy loading (cursor-based) ──────────────────────────────────────
@@ -298,7 +324,7 @@ exports.getRevenueStats = async (req, res) => {
     if (from || to) {
       filter.checkOut = {};
       if (from) filter.checkOut.$gte = new Date(from);
-      if (to)   filter.checkOut.$lte = new Date(to);
+      if (to) filter.checkOut.$lte = new Date(to);
     }
     const bookings = await Booking.find(filter);
     const total = bookings.reduce((s, b) => s + (b.totalAmount || 0), 0);
