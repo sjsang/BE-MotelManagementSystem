@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const bookingController = require('./booking.controller'); 
+const bookingController = require('./booking.controller');
 const authMiddleware = require('../../middlewares/auth.middleware');
 
 // GET all bookings
@@ -14,6 +14,9 @@ router.get('/:id', bookingController.getBookingById);
 
 // POST check-in
 router.post('/checkin', bookingController.checkIn);
+
+// GET preview checkout (tính tiền tạm thời trước khi checkout)
+router.get('/preview-checkout/:bookingId', bookingController.previewCheckout);
 
 // POST check-out
 router.post('/checkout/:bookingId', bookingController.checkOut);
