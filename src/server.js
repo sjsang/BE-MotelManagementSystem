@@ -21,6 +21,7 @@ app.use('/api/prices', require('../src/modules/price/price.routes'));
 app.use('/api/auth', require('../src/modules/auth/auth.routes'));
 app.use('/api/customers', require('../src/modules/customer/customer.routes'));
 app.use('/api/invoices', require('../src/modules/invoice/invoice.routes'));
+app.use('/api/reports', require('../src/modules/report/report.routes'));
 
 // Health check
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date() }));
