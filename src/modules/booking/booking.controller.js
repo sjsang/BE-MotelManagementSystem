@@ -179,7 +179,10 @@ exports.getAllBookings = async (req, res) => {
     }
 
     // ── Lazy loading (cursor-based) ──────────────────────────────────────
-    const PAGE_LIMIT = Math.min(parseInt(limitStr) || 30, 100);
+    let PAGE_LIMIT = Math.min(parseInt(limitStr) || 30, 100);
+    if (limitStr === 'none' || parseInt(limitStr) === -1) {
+      PAGE_LIMIT = 100000;
+    }
     if (cursor) {
       // Lấy các bản ghi có _id < cursor (mới hơn được sort trước → cursor là _id nhỏ nhất đã thấy)
       filter._id = { $lt: cursor };
@@ -236,6 +239,11 @@ exports.checkIn = async (req, res) => {
         : (typePrices.hourly_first ?? typePrices.hourly_2h ?? 0);
     }
 
+    const checkInTime = new Date();
+    const defaultExpectedCheckOut = new Date(checkInTime);
+    defaultExpectedCheckOut.setDate(defaultExpectedCheckOut.getDate() + 1);
+    defaultExpectedCheckOut.setHours(0, 0, 0, 0);
+
     const booking = new Booking({
       room: roomId,
       roomNumber: room.roomNumber,
@@ -244,8 +252,8 @@ exports.checkIn = async (req, res) => {
       guestId: guestId || '',
       bookingType,
       shift: shift || 'day',
-      checkIn: new Date(),
-      expectedCheckOut: expectedCheckOut ? new Date(expectedCheckOut) : null,
+      checkIn: checkInTime,
+      expectedCheckOut: expectedCheckOut ? new Date(expectedCheckOut) : defaultExpectedCheckOut,
       basePrice,
       services: services || [],
       status: 'active',
