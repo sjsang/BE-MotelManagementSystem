@@ -8,16 +8,16 @@ const customerSchema = new mongoose.Schema({
     },
     gioitinh: {
         type: String,
-        enum: ['Nam', 'Nữ'],
-        required: true
+        enum: ['Nam', 'Nữ', '', null],
+        required: false
     },
     ngaythangnamsinh: {
         type: Date,
-        required: true
+        required: false
     },
     quoctich: {
         type: String,
-        required: true,
+        required: false,
         default: 'Việt Nam',
         trim: true
     },

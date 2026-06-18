@@ -32,7 +32,7 @@ const getCustomerOptions = async (req, res) => {
     }
 };
 
-// Lấy tất cả khách hàng — hỗ trợ lọc phía server + cursor-based lazy loading
+// Lấy tất cả khách hàng — hỗ trợ lọc phía server + cursor-based & page-based pagination
 const getAllCustomers = async (req, res) => {
     try {
         const {
@@ -41,9 +41,14 @@ const getAllCustomers = async (req, res) => {
             gioitinh,     // 'Nam' | 'Nữ'
             limit: limitStr,
             cursor,       // _id cuối cùng của trang trước
+            page: pageStr, // số trang cần tải
+            sort,         // 'name' hoặc 'hoten' để sắp xếp theo bảng chữ cái
         } = req.query;
 
-        const PAGE_LIMIT = Math.min(parseInt(limitStr) || 30, 100);
+        let PAGE_LIMIT = Math.min(parseInt(limitStr) || 30, 100);
+        if (limitStr === 'none' || parseInt(limitStr) === -1) {
+            PAGE_LIMIT = 100000;
+        }
         const filter = {};
 
         // ── Tìm kiếm text ──────────────────────────────────────────────
@@ -59,7 +64,6 @@ const getAllCustomers = async (req, res) => {
         // ── Quốc tịch ─────────────────────────────────────────────────
         if (quoctich) {
             if (quoctich === 'nuoc-ngoai') {
-                // Tất cả không phải Việt Nam
                 filter.quoctich = { $ne: 'Việt Nam' };
             } else {
                 filter.quoctich = quoctich;
@@ -71,21 +75,45 @@ const getAllCustomers = async (req, res) => {
             filter.gioitinh = gioitinh;
         }
 
-        // ── Cursor-based pagination ───────────────────────────────────
-        if (cursor) {
-            filter._id = { $lt: cursor };
+        // Sắp xếp: theo thứ tự thêm vào hệ thống (mới nhất lên đầu)
+        let sortObj = { _id: -1 };
+
+        let resultCustomers = [];
+        let hasMore = false;
+        let nextCursor = null;
+        let nextPage = null;
+
+        if (pageStr) {
+            const page = parseInt(pageStr) || 1;
+            const skip = (page - 1) * PAGE_LIMIT;
+            resultCustomers = await Customer.find(filter)
+                .sort(sortObj)
+                .skip(skip)
+                .limit(PAGE_LIMIT + 1);
+            
+            hasMore = resultCustomers.length > PAGE_LIMIT;
+            if (hasMore) resultCustomers.pop();
+            nextPage = hasMore ? page + 1 : null;
+        } else {
+            // Cursor-based pagination fallback
+            if (cursor && sortObj._id === -1) {
+                filter._id = { $lt: cursor };
+            }
+            resultCustomers = await Customer.find(filter)
+                .sort(sortObj)
+                .limit(PAGE_LIMIT + 1);
+
+            hasMore = resultCustomers.length > PAGE_LIMIT;
+            if (hasMore) resultCustomers.pop();
+            nextCursor = hasMore ? resultCustomers[resultCustomers.length - 1]._id : null;
         }
 
-        const customers = await Customer.find(filter)
-            .sort({ _id: -1 })
-            .limit(PAGE_LIMIT + 1);
-
-        const hasMore = customers.length > PAGE_LIMIT;
-        if (hasMore) customers.pop();
-
-        const nextCursor = hasMore ? customers[customers.length - 1]._id : null;
-
-        res.status(200).json({ data: customers, hasMore, nextCursor });
+        res.status(200).json({ 
+            data: resultCustomers, 
+            hasMore, 
+            nextCursor, 
+            nextPage 
+        });
     } catch (error) {
         res.status(500).json({ message: 'Lỗi khi lấy danh sách khách lưu trú', error: error.message });
     }
@@ -110,40 +138,41 @@ const createCustomer = async (req, res) => {
     try {
         const { hoten, gioitinh, ngaythangnamsinh, quoctich, cccd, ngaycap, noicap, thuongtru, passport, visaType, visaExpiredDate, entryDate } = req.body;
 
-        if (!hoten || !gioitinh || !ngaythangnamsinh || !quoctich) {
-            return res.status(400).json({ message: 'Vui lòng điền đầy đủ các thông tin bắt buộc (Họ tên, Giới tính, Ngày sinh, Quốc tịch)' });
+        if (!hoten || !hoten.trim()) {
+            return res.status(400).json({ message: 'Vui lòng điền họ và tên khách hàng' });
         }
-        if (!['Nam', 'Nữ'].includes(gioitinh)) {
+        if (gioitinh && !['Nam', 'Nữ', '', null].includes(gioitinh)) {
             return res.status(400).json({ message: 'Giới tính phải là Nam hoặc Nữ' });
         }
 
-        const customerData = { hoten, gioitinh, ngaythangnamsinh, quoctich };
+        const customerData = {
+            hoten: hoten.trim(),
+            gioitinh: gioitinh || undefined,
+            ngaythangnamsinh: ngaythangnamsinh || undefined,
+            quoctich: quoctich || 'Việt Nam'
+        };
 
-        if (quoctich === 'Việt Nam') {
-            if (!cccd || !thuongtru) {
-                return res.status(400).json({ message: 'Đối với quốc tịch Việt Nam, vui lòng nhập đầy đủ Số CCCD và Địa chỉ thường trú' });
-            }
-            const existingCCCD = await Customer.findOne({ cccd });
+        if (cccd && cccd.trim()) {
+            const existingCCCD = await Customer.findOne({ cccd: cccd.trim() });
             if (existingCCCD) {
                 return res.status(400).json({ message: 'Số CCCD đã tồn tại trong hệ thống' });
             }
-            customerData.cccd = cccd;
-            customerData.ngaycap = ngaycap;
-            customerData.noicap = noicap;
-            customerData.thuongtru = thuongtru;
-        } else {
-            if (!passport || !visaType || !visaExpiredDate || !entryDate) {
-                return res.status(400).json({ message: 'Đối với người nước ngoài, vui lòng nhập đầy đủ thông tin Hộ chiếu, Loại Visa, Ngày hết hạn Visa, và Ngày nhập cảnh' });
-            }
-            const existingPassport = await Customer.findOne({ passport });
+            customerData.cccd = cccd.trim();
+        }
+        if (ngaycap) customerData.ngaycap = ngaycap;
+        if (noicap) customerData.noicap = noicap;
+        if (thuongtru) customerData.thuongtru = thuongtru;
+
+        if (passport && passport.trim()) {
+            const existingPassport = await Customer.findOne({ passport: passport.trim() });
             if (existingPassport) {
                 return res.status(400).json({ message: 'Số Hộ chiếu đã tồn tại trong hệ thống' });
             }
-            customerData.passport = passport;
-            customerData.visaType = visaType;
-            customerData.visaExpiredDate = visaExpiredDate;
-            customerData.entryDate = entryDate;
+            customerData.passport = passport.trim();
         }
+        if (visaType) customerData.visaType = visaType;
+        if (visaExpiredDate) customerData.visaExpiredDate = visaExpiredDate;
+        if (entryDate) customerData.entryDate = entryDate;
 
         const newCustomer = new Customer(customerData);
         await newCustomer.save();
@@ -163,36 +192,41 @@ const updateCustomer = async (req, res) => {
         if (!currentCustomer) {
             return res.status(404).json({ message: 'Không tìm thấy khách hàng' });
         }
-        if (!hoten || !gioitinh || !ngaythangnamsinh || !quoctich) {
-            return res.status(400).json({ message: 'Vui lòng điền đầy đủ các thông tin bắt buộc (Họ tên, Giới tính, Ngày sinh, Quốc tịch)' });
+        if (!hoten || !hoten.trim()) {
+            return res.status(400).json({ message: 'Vui lòng điền họ và tên khách hàng' });
         }
-        if (!['Nam', 'Nữ'].includes(gioitinh)) {
+        if (gioitinh && !['Nam', 'Nữ', '', null].includes(gioitinh)) {
             return res.status(400).json({ message: 'Giới tính phải là Nam hoặc Nữ' });
         }
 
-        const updateData = { hoten, gioitinh, ngaythangnamsinh, quoctich };
-
-        if (quoctich === 'Việt Nam') {
-            if (!cccd || !thuongtru) {
-                return res.status(400).json({ message: 'Đối với quốc tịch Việt Nam, vui lòng nhập đầy đủ Số CCCD và Địa chỉ thường trú' });
-            }
-            const existingCCCD = await Customer.findOne({ cccd, _id: { $ne: id } });
+        if (cccd && cccd.trim()) {
+            const existingCCCD = await Customer.findOne({ cccd: cccd.trim(), _id: { $ne: id } });
             if (existingCCCD) {
                 return res.status(400).json({ message: 'Số CCCD đã tồn tại trong hệ thống' });
             }
-            updateData.cccd = cccd; updateData.ngaycap = ngaycap; updateData.noicap = noicap; updateData.thuongtru = thuongtru;
-            updateData.passport = null; updateData.visaType = null; updateData.visaExpiredDate = null; updateData.entryDate = null;
-        } else {
-            if (!passport || !visaType || !visaExpiredDate || !entryDate) {
-                return res.status(400).json({ message: 'Đối với người nước ngoài, vui lòng nhập đầy đủ thông tin Hộ chiếu, Loại Visa, Ngày hết hạn Visa, và Ngày nhập cảnh' });
-            }
-            const existingPassport = await Customer.findOne({ passport, _id: { $ne: id } });
+        }
+
+        if (passport && passport.trim()) {
+            const existingPassport = await Customer.findOne({ passport: passport.trim(), _id: { $ne: id } });
             if (existingPassport) {
                 return res.status(400).json({ message: 'Số Hộ chiếu đã tồn tại trong hệ thống' });
             }
-            updateData.passport = passport; updateData.visaType = visaType; updateData.visaExpiredDate = visaExpiredDate; updateData.entryDate = entryDate;
-            updateData.cccd = null; updateData.ngaycap = null; updateData.noicap = null; updateData.thuongtru = null;
         }
+
+        const updateData = {
+            hoten: hoten.trim(),
+            gioitinh: gioitinh || null,
+            ngaythangnamsinh: ngaythangnamsinh || null,
+            quoctich: quoctich || 'Việt Nam',
+            cccd: cccd ? cccd.trim() : null,
+            ngaycap: ngaycap || null,
+            noicap: noicap || null,
+            thuongtru: thuongtru || null,
+            passport: passport ? passport.trim() : null,
+            visaType: visaType || null,
+            visaExpiredDate: visaExpiredDate || null,
+            entryDate: entryDate || null
+        };
 
         const updatedCustomer = await Customer.findByIdAndUpdate(id, updateData, { new: true, runValidators: true });
         res.status(200).json(updatedCustomer);
