@@ -73,6 +73,8 @@ exports.previewCheckout = async (req, res) => {
 
     res.json({
       basePrice, extraCharge, extraHours, servicesCharge, totalAmount,
+      deposit: booking.deposit,
+      remaining: Math.max(0, totalAmount - booking.deposit),
       checkIn: booking.checkIn, checkOutEstimated: new Date()
     });
   } catch (err) {
@@ -217,8 +219,7 @@ exports.getBookingById = async (req, res) => {
 // POST check-in
 exports.checkIn = async (req, res) => {
   try {
-    const { roomId, roomNumber, guestName, guestPhone, guestId, bookingType, shift, expectedCheckOut, notes, services } = req.body;
-
+    const { roomId, roomNumber, guestName, guestPhone, guestId, bookingType, shift, expectedCheckOut, notes, services, deposit } = req.body;
     const room = await Room.findById(roomId);
     if (!room) return res.status(404).json({ error: 'Không tìm thấy phòng' });
     if (room.status === 'occupied') return res.status(400).json({ error: 'Phòng đang có khách' });
@@ -256,6 +257,7 @@ exports.checkIn = async (req, res) => {
       expectedCheckOut: expectedCheckOut ? new Date(expectedCheckOut) : defaultExpectedCheckOut,
       basePrice,
       services: services || [],
+      deposit: deposit || 0,
       status: 'active',
       notes: notes || '',
       room_type: room.type

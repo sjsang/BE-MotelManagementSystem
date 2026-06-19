@@ -24,6 +24,7 @@ const bookingSchema = new mongoose.Schema({
   extraHours: { type: Number, default: 0 },        // số giờ phụ thu
   extraCharge: { type: Number, default: 0 },       // tiền phụ thu
   servicesCharge: { type: Number, default: 0 },    // dịch vụ thêm
+  deposit: { type: Number, default: 0 },           // tiền cọc / tạm ứng
   totalAmount: { type: Number, default: 0 },       // tổng tiền
 
   services: [{

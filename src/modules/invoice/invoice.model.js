@@ -20,9 +20,10 @@ const invoiceSchema = new mongoose.Schema({
     servicesCharge: { type: Number, default: 0 },
     discount: { type: Number, default: 0 },
     tax: { type: Number, default: 0 },
+    payableAmount: { type: Number, default: 0 }, // <-- Trường bổ sung mới
+    deposit: { type: Number, default: 0 },
     paidAmount: { type: Number, default: 0 },
     totalAmount: { type: Number, default: 0 },
-
     services: [{ name: String, price: Number, quantity: Number }],
 
     status: { type: String, enum: ['issued', 'cancelled'], default: 'issued' },
