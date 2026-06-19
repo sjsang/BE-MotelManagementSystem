@@ -20,11 +20,13 @@ const bookingSchema = new mongoose.Schema({
   checkOut: { type: Date }, // null nếu chưa check out
   expectedCheckOut: { type: Date }, // dự kiến trả phòng
 
-  basePrice: { type: Number, required: true },    // giá gốc
-  extraHours: { type: Number, default: 0 },        // số giờ phụ thu
-  extraCharge: { type: Number, default: 0 },       // tiền phụ thu
-  servicesCharge: { type: Number, default: 0 },    // dịch vụ thêm
-  totalAmount: { type: Number, default: 0 },       // tổng tiền
+  basePrice: { type: Number, required: true },         // giá gốc (theo loại thuê)
+  earlyCheckInCharge: { type: Number, default: 0 },    // phụ thu check-in sớm (overnight/fullday)
+  extraHours: { type: Number, default: 0 },            // số giờ check-out muộn
+  extraCharge: { type: Number, default: 0 },           // tiền check-out muộn
+  servicesCharge: { type: Number, default: 0 },        // dịch vụ thêm
+  deposit: { type: Number, default: 0 },               // tiền cọc / tạm ứng
+  totalAmount: { type: Number, default: 0 },           // tổng tiền
 
   services: [{
     name: String,

@@ -35,13 +35,12 @@ const generateInvoiceNumber = async () => {
 
     return `HD${yearStr}${monthStr}${seq}`;
 };
-
 // POST /invoices
-// Body: { bookingId, discount, tax, issuedBy, notes }
+// Body: { bookingId, discount, taxType, taxPercent, tax, issuedBy, notes }
 const createInvoice = async (req, res) => {
     try {
-        // Thêm biến tax từ req.body (mặc định là 0 nếu không truyền lên)
-        const { bookingId, discount = 0, tax = 0, issuedBy = '', notes = '' } = req.body;
+        // Nhận thêm taxType, taxPercent và tax (vnd) từ req.body
+        const { bookingId, discount = 0, taxType = 'vnd', taxPercent = 0, tax: inputTax = 0, issuedBy = '', notes = '' } = req.body;
 
         if (!bookingId) return res.status(400).json({ message: 'bookingId là bắt buộc' });
 
@@ -59,10 +58,22 @@ const createInvoice = async (req, res) => {
         }
 
         const invoiceNumber = await generateInvoiceNumber();
-        const totalAmount = booking.totalAmount;
 
-        // Công thức tính Thực thu: (Tổng - Giảm giá) + Thuế
-        const paidAmount = Math.max(0, totalAmount - discount) + tax;
+        // 1. Sao chép totalAmount và deposit từ booking
+        const totalAmount = booking.totalAmount || 0;
+        const deposit = booking.deposit || 0;
+
+        // 2. Tính toán Tax
+        let calculatedTax = 0;
+        if (taxType === 'percent') {
+            calculatedTax = (totalAmount - discount) * (taxPercent / 100);
+        } else if (taxType === 'vnd') {
+            calculatedTax = inputTax;
+        }
+
+        // 3. Tính Giá trị Thanh toán (payableAmount) và Thực thu (paidAmount)
+        const payableAmount = totalAmount - discount + calculatedTax;
+        const paidAmount = Math.max(0, payableAmount - deposit);
 
         const invoice = await Invoice.create({
             booking: booking._id,
@@ -79,16 +90,19 @@ const createInvoice = async (req, res) => {
             bookingType: booking.bookingType,
             shift: booking.shift,
 
-            basePrice: booking.basePrice,
-            extraHours: booking.extraHours,
-            extraCharge: booking.extraCharge,
-            servicesCharge: booking.servicesCharge,
-            services: booking.services,
+            basePrice: booking.basePrice || 0,
+            earlyCheckInCharge: booking.earlyCheckInCharge || 0, // <-- ĐÃ THÊM PHỤ THU VÀO SỚM
+            extraCharge: booking.extraCharge || 0,               // <-- ĐÃ ĐẢM BẢO LUÔN CÓ SỐ (Phụ thu ra trễ)
+            servicesCharge: booking.servicesCharge || 0,
+            services: booking.services || [],
 
+            // Lưu các trường tiền tệ theo đúng thứ tự
             discount,
-            tax,
-            totalAmount,
+            tax: calculatedTax,
+            payableAmount,
+            deposit,
             paidAmount,
+            totalAmount,
 
             issuedAt: new Date(),
             issuedBy,
@@ -100,7 +114,6 @@ const createInvoice = async (req, res) => {
         return res.status(500).json({ message: err.message });
     }
 };
-
 // GET /invoices
 // Query: ?page=1&limit=20&roomNumber=101&guestName=abc&from=2024-06-01&to=2024-06-30&status=issued
 const getInvoices = async (req, res) => {

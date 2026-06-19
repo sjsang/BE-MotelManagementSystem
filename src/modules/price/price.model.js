@@ -8,7 +8,7 @@ const priceConfigSchema = new mongoose.Schema({
   dayShift: {
     single: {
       fullday: { type: Number, default: 300000 },      // Ngày đêm 24h
-      overnight: { type: Number, default: 200000 },    // Qua đêm 18h-8h
+      overnight: { type: Number, default: 200000 },    // Qua đêm 18h–8h
       hourly_first: { type: Number, default: 80000 },  // <= 30 phút
       hourly_2h: { type: Number, default: 100000 },    // 30 phút đến 2h
       hourly_extra: { type: Number, default: 20000 },  // Mỗi giờ thêm sau 2h
@@ -33,8 +33,12 @@ const priceConfigSchema = new mongoose.Schema({
     }
   },
 
-  // Phụ thu check-in sớm / check-out muộn
-  lateEarlyFee: { type: Number, default: 20000 }, // /giờ
+  // Phụ thu check-in sớm (mỗi giờ vào trước khung giờ chuẩn)
+  // overnight: chuẩn 18h | fullday: chuẩn 12h
+  earlyCheckInFee: { type: Number, default: 20000 },  // đ/giờ
+
+  // Phụ thu check-out muộn (mỗi giờ ở quá khung giờ chuẩn)
+  lateEarlyFee: { type: Number, default: 20000 },     // đ/giờ (tên giữ nguyên để tương thích)
 
   // Dịch vụ
   services: [{
@@ -46,7 +50,7 @@ const priceConfigSchema = new mongoose.Schema({
 
   // Áp dụng từ ngày / đến ngày (null = không giới hạn)
   validFrom: { type: Date, default: null },
-  validTo: { type: Date, default: null },
+  validTo:   { type: Date, default: null },
 }, { timestamps: true });
 
 module.exports = mongoose.model('PriceConfig', priceConfigSchema);
