@@ -16,6 +16,7 @@ const invoiceSchema = new mongoose.Schema({
     shift: { type: String, enum: ['day', 'night'] },
 
     basePrice: { type: Number, default: 0 },
+    earlyCheckInCharge: { type: Number, default: 0 },
     extraCharge: { type: Number, default: 0 },
     servicesCharge: { type: Number, default: 0 },
     discount: { type: Number, default: 0 },

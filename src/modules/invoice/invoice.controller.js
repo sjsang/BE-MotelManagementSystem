@@ -35,7 +35,6 @@ const generateInvoiceNumber = async () => {
 
     return `HD${yearStr}${monthStr}${seq}`;
 };
-
 // POST /invoices
 // Body: { bookingId, discount, taxType, taxPercent, tax, issuedBy, notes }
 const createInvoice = async (req, res) => {
@@ -91,10 +90,11 @@ const createInvoice = async (req, res) => {
             bookingType: booking.bookingType,
             shift: booking.shift,
 
-            basePrice: booking.basePrice,
-            extraCharge: booking.extraCharge,
-            servicesCharge: booking.servicesCharge,
-            services: booking.services,
+            basePrice: booking.basePrice || 0,
+            earlyCheckInCharge: booking.earlyCheckInCharge || 0, // <-- ĐÃ THÊM PHỤ THU VÀO SỚM
+            extraCharge: booking.extraCharge || 0,               // <-- ĐÃ ĐẢM BẢO LUÔN CÓ SỐ (Phụ thu ra trễ)
+            servicesCharge: booking.servicesCharge || 0,
+            services: booking.services || [],
 
             // Lưu các trường tiền tệ theo đúng thứ tự
             discount,
@@ -114,7 +114,6 @@ const createInvoice = async (req, res) => {
         return res.status(500).json({ message: err.message });
     }
 };
-
 // GET /invoices
 // Query: ?page=1&limit=20&roomNumber=101&guestName=abc&from=2024-06-01&to=2024-06-30&status=issued
 const getInvoices = async (req, res) => {
