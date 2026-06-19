@@ -217,7 +217,7 @@ exports.getBookingById = async (req, res) => {
 // POST check-in
 exports.checkIn = async (req, res) => {
   try {
-    const { roomId, roomNumber, guestName, guestPhone, guestId, bookingType, shift, expectedCheckOut, notes, services } = req.body;
+    const { roomId, roomNumber, guestName, guestPhone, guestId, bookingType, shift, expectedCheckOut, notes, services, lydocutru, nhaplydo } = req.body;
 
     const room = await Room.findById(roomId);
     if (!room) return res.status(404).json({ error: 'Không tìm thấy phòng' });
@@ -258,7 +258,9 @@ exports.checkIn = async (req, res) => {
       services: services || [],
       status: 'active',
       notes: notes || '',
-      room_type: room.type
+      room_type: room.type,
+      lydocutru: lydocutru || '',
+      nhaplydo: nhaplydo || '',
     });
     await booking.save();
 

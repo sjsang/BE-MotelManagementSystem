@@ -37,6 +37,8 @@ const bookingSchema = new mongoose.Schema({
   is_reported: { type: Boolean, default: false },
   reported: { type: Date },
   reported_by: { type: String, default: '' },
+  lydocutru: { type: String, default: '' },
+  nhaplydo: { type: String, default: '' },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Booking', bookingSchema);

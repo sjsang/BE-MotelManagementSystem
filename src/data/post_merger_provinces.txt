@@ -1,0 +1,34 @@
+101 - TP. Hà Nội
+103 - TP. Hải Phòng
+109 - Hưng Yên
+117 - Ninh Bình
+203 - Cao Bằng
+205 - Lào Cai
+209 - Lạng Sơn
+211 - Tuyên Quang
+215 - Thái Nguyên
+217 - Phú Thọ
+223 - Bắc Ninh
+225 - Quảng Ninh
+301 - Lai Châu
+302 - Điện Biên
+303 - Sơn La
+401 - Thanh Hóa
+403 - Nghệ An
+405 - Hà Tĩnh
+409 - Quảng Trị
+411 - TP. Huế
+501 - TP. Đà Nẵng
+505 - Quảng Ngãi
+511 - Khánh Hòa
+603 - Gia Lai
+605 - Đắk Lắk
+701 - TP. Hồ Chí Minh
+703 - Lâm Đồng
+709 - Tây Ninh
+713 - Đồng Nai
+803 - Đồng Tháp
+805 - An Giang
+809 - Vĩnh Long
+815 - TP. Cần Thơ
+823 - Cà Mau

@@ -18,7 +18,7 @@ const customerSchema = new mongoose.Schema({
     quoctich: {
         type: String,
         required: false,
-        default: 'Việt Nam',
+        default: 'VNM - Viet Nam',
         trim: true
     },
     // Dành cho quốc tịch Việt Nam
@@ -51,10 +51,46 @@ const customerSchema = new mongoose.Schema({
     },
     entryDate: {
         type: Date
+    },
+    diachichitiet: {
+        type: String,
+        trim: true
+    },
+    diachichitietcu: {
+        type: String,
+        trim: true
+    },
+    loaigiayto: {
+        type: String,
+        trim: true
+    },
+    tengiayto: {
+        type: String,
+        trim: true
+    },
+    noicutruhiennay: {
+        type: String,
+        trim: true
+    },
+    sodienthoai: {
+        type: String,
+        trim: true
+    },
+    thuongtrumoi: {
+        type: String,
+        trim: true
+    },
+    thuongtrucu: {
+        type: String,
+        trim: true
+    },
+    diachichitietmoi: {
+        type: String,
+        trim: true
     }
-}, { 
-    collection: 'khachhangs', 
-    timestamps: true 
+}, {
+    collection: 'khachhangs',
+    timestamps: true
 });
 
 const Customer = mongoose.model('Customer', customerSchema);
