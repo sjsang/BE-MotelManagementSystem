@@ -21,6 +21,9 @@ router.get('/preview-checkout/:bookingId', bookingController.previewCheckout);
 // POST check-out
 router.post('/checkout/:bookingId', bookingController.checkOut);
 
+// POST change room (đổi phòng — chỉ được nếu phòng mới đang trống)
+router.post('/change-room/:bookingId', bookingController.changeRoom);
+
 // PUT update booking (add services, notes)
 router.put('/:id', authMiddleware, bookingController.updateBooking);
 

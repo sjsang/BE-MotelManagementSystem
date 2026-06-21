@@ -413,6 +413,45 @@ exports.updateBooking = async (req, res) => {
   }
 };
 
+// ─── CHANGE ROOM ──────────────────────────────────────────────────────────────
+exports.changeRoom = async (req, res) => {
+  try {
+    const booking = await Booking.findById(req.params.bookingId).populate('room');
+    if (!booking) return res.status(404).json({ error: 'Không tìm thấy booking' });
+    if (booking.status !== 'active') return res.status(400).json({ error: 'Booking không active' });
+
+    const { newRoomId } = req.body;
+    if (!newRoomId) return res.status(400).json({ error: 'Thiếu newRoomId' });
+
+    const newRoom = await Room.findById(newRoomId);
+    if (!newRoom) return res.status(404).json({ error: 'Không tìm thấy phòng mới' });
+    if (newRoom.status !== 'available') return res.status(400).json({ error: 'Phòng mới không trống, không thể đổi' });
+    if (newRoom._id.toString() === booking.room._id.toString()) {
+      return res.status(400).json({ error: 'Phòng mới trùng với phòng hiện tại' });
+    }
+
+    // Cập nhật phòng cũ → cleaning
+    const oldRoom = await Room.findById(booking.room._id);
+    if (oldRoom) { oldRoom.status = 'cleaning'; await oldRoom.save(); }
+
+    // Cập nhật phòng mới → occupied
+    newRoom.status = 'occupied';
+    await newRoom.save();
+
+    // Cập nhật booking
+    booking.room = newRoom._id;
+    booking.roomNumber = newRoom.roomNumber;
+    await booking.save();
+
+    res.json({
+      message: `Đã đổi phòng sang ${newRoom.roomNumber}`,
+      booking,
+    });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+};
+
 // ─── REVENUE STATS ────────────────────────────────────────────────────────────
 exports.getRevenueStats = async (req, res) => {
   try {
