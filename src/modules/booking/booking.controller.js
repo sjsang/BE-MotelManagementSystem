@@ -103,16 +103,15 @@ function calculateAmount(booking, priceConfig) {
     earlyCheckInCharge = early.earlyCheckInCharge;
     earlyCheckInHours = early.earlyH;
 
-    // 2. Phụ thu check-out muộn: tính từ mốc check-in CHUẨN (12h), không phải giờ thực
-    //    Nếu vào sớm hơn 12h → mốc tính là 12h (đã trả phụ thu rồi)
-    //    Nếu vào sau 12h → mốc tính là giờ check-in thực
-    const effectiveStart = early.standardCheckIn
-      ? (checkInTime < early.standardCheckIn ? early.standardCheckIn : checkInTime)
-      : checkInTime;
-    const effectiveHours = (checkOutTime - effectiveStart) / (1000 * 60 * 60);
-    if (effectiveHours > STANDARD_DURATION_HOURS.fullday) {
-      extraHours = ceilWithGrace(effectiveHours - STANDARD_DURATION_HOURS.fullday);
-      extraCharge = extraHours * (priceConfig.lateEarlyFee ?? 20000);
+    // 2. Phụ thu check-out muộn: Chốt mốc 12h trưa hôm sau (chuẩn 12h + 24h)
+    if (early.standardCheckIn) {
+      const standardCheckOut = new Date(early.standardCheckIn.getTime() + (STANDARD_DURATION_HOURS.fullday * 60 * 60 * 1000));
+
+      if (checkOutTime > standardCheckOut) {
+        const lateHoursRaw = (checkOutTime - standardCheckOut) / (1000 * 60 * 60);
+        extraHours = ceilWithGrace(lateHoursRaw);
+        extraCharge = extraHours * (priceConfig.lateEarlyFee ?? 20000);
+      }
     }
 
     // ── OVERNIGHT ─────────────────────────────────────────────────────────────
@@ -124,16 +123,16 @@ function calculateAmount(booking, priceConfig) {
     earlyCheckInCharge = early.earlyCheckInCharge;
     earlyCheckInHours = early.earlyH;
 
-    // 2. Phụ thu check-out muộn: tính từ mốc 18h chuẩn
-    const effectiveStart = early.standardCheckIn
-      ? (checkInTime < early.standardCheckIn ? early.standardCheckIn : checkInTime)
-      : checkInTime;
-    const effectiveHours = (checkOutTime - effectiveStart) / (1000 * 60 * 60);
-    if (effectiveHours > STANDARD_DURATION_HOURS.overnight) {
-      extraHours = ceilWithGrace(effectiveHours - STANDARD_DURATION_HOURS.overnight);
-      extraCharge = extraHours * (priceConfig.lateEarlyFee ?? 20000);
-    }
+    // 2. Phụ thu check-out muộn: Chốt mốc 8h sáng hôm sau (chuẩn 18h + 14h)
+    if (early.standardCheckIn) {
+      const standardCheckOut = new Date(early.standardCheckIn.getTime() + (STANDARD_DURATION_HOURS.overnight * 60 * 60 * 1000));
 
+      if (checkOutTime > standardCheckOut) {
+        const lateHoursRaw = (checkOutTime - standardCheckOut) / (1000 * 60 * 60);
+        extraHours = ceilWithGrace(lateHoursRaw);
+        extraCharge = extraHours * (priceConfig.lateEarlyFee ?? 20000);
+      }
+    }
     // ── HOURLY ────────────────────────────────────────────────────────────────
   } else if (bookingType === 'hourly') {
     if (shift === 'night') {
@@ -328,8 +327,7 @@ exports.checkIn = async (req, res) => {
         : (dayPrices.hourly_first ?? dayPrices.hourly_2h ?? 0);
     }
 
-    const checkInTime = new Date();
-
+    const checkInTime = req.body.checkIn ? new Date(req.body.checkIn) : new Date();
     // Tính earlyCheckInCharge ngay lúc check-in để lưu vào booking
     const early = calcEarlyCheckIn(bookingType, checkInTime, dayPrices, priceConfig);
 
