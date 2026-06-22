@@ -77,7 +77,7 @@ function calculateAmount(booking, priceConfig) {
   const dayPrices = priceConfig.dayShift[room_type === 'double' ? 'double' : 'single'];
   // hourly ca đêm dùng nightShift
   const shiftPrices = (shift === 'night' ? priceConfig.nightShift : priceConfig.dayShift)
-    [room_type === 'double' ? 'double' : 'single'];
+  [room_type === 'double' ? 'double' : 'single'];
 
   let basePrice = 0;
   let earlyCheckInCharge = 0;
@@ -112,7 +112,7 @@ function calculateAmount(booking, priceConfig) {
       extraCharge = extraHours * (priceConfig.lateEarlyFee ?? 20000);
     }
 
-  // ── OVERNIGHT ─────────────────────────────────────────────────────────────
+    // ── OVERNIGHT ─────────────────────────────────────────────────────────────
   } else if (bookingType === 'overnight') {
     basePrice = dayPrices.overnight ?? 0;
 
@@ -131,7 +131,7 @@ function calculateAmount(booking, priceConfig) {
       extraCharge = extraHours * (priceConfig.lateEarlyFee ?? 20000);
     }
 
-  // ── HOURLY ────────────────────────────────────────────────────────────────
+    // ── HOURLY ────────────────────────────────────────────────────────────────
   } else if (bookingType === 'hourly') {
     if (shift === 'night') {
       // Ca đêm: giá giờ đầu cố định, mỗi giờ thêm tính extra
@@ -184,10 +184,14 @@ exports.previewCheckout = async (req, res) => {
       priceConfig
     );
 
+    const depositOverride = req.query.deposit !== undefined
+      ? Number(req.query.deposit)
+      : booking.deposit;
+
     res.json({
       ...result,
-      deposit: booking.deposit,
-      remaining: Math.max(0, result.totalAmount - booking.deposit),
+      deposit: depositOverride,
+      remaining: Math.max(0, result.totalAmount - depositOverride),
       checkIn: booking.checkIn,
       checkOutEstimated: new Date(),
     });
@@ -243,11 +247,11 @@ exports.getAllBookings = async (req, res) => {
     } = req.query;
 
     const filter = {};
-    if (status)      filter.status = status;
+    if (status) filter.status = status;
     if (bookingType) filter.bookingType = bookingType;
-    if (room_type)   filter.room_type = room_type;
-    if (shift)       filter.shift = shift;
-    if (roomNumber)  filter.roomNumber = roomNumber;
+    if (room_type) filter.room_type = room_type;
+    if (shift) filter.shift = shift;
+    if (roomNumber) filter.roomNumber = roomNumber;
 
     if (search && search.trim()) {
       const regex = new RegExp(search.trim(), 'i');
@@ -262,7 +266,7 @@ exports.getAllBookings = async (req, res) => {
     if (dateRange) {
       filter[field] = {};
       if (dateRange.from) filter[field].$gte = dateRange.from;
-      if (dateRange.to)   filter[field].$lte = dateRange.to;
+      if (dateRange.to) filter[field].$lte = dateRange.to;
     }
 
     let PAGE_LIMIT = Math.min(parseInt(limitStr) || 30, 100);
@@ -373,19 +377,22 @@ exports.checkOut = async (req, res) => {
     booking.checkOut = new Date();
     booking.services = req.body.services || booking.services;
     booking.notes = req.body.notes || booking.notes;
+    if (req.body.deposit !== undefined) {
+      booking.deposit = Number(req.body.deposit);
+    }
 
     const result = calculateAmount(
       { ...booking.toObject(), room_type: booking.room?.type || 'single' },
       priceConfig
     );
 
-    booking.basePrice          = result.basePrice;
+    booking.basePrice = result.basePrice;
     booking.earlyCheckInCharge = result.earlyCheckInCharge;
-    booking.extraCharge        = result.extraCharge;
-    booking.extraHours         = result.extraHours;
-    booking.servicesCharge     = result.servicesCharge;
-    booking.totalAmount        = result.totalAmount;
-    booking.status             = 'completed';
+    booking.extraCharge = result.extraCharge;
+    booking.extraHours = result.extraHours;
+    booking.servicesCharge = result.servicesCharge;
+    booking.totalAmount = result.totalAmount;
+    booking.status = 'completed';
     await booking.save();
 
     const room = await Room.findById(booking.room);
@@ -460,7 +467,7 @@ exports.getRevenueStats = async (req, res) => {
     if (from || to) {
       filter.checkOut = {};
       if (from) filter.checkOut.$gte = new Date(from);
-      if (to)   filter.checkOut.$lte = new Date(to);
+      if (to) filter.checkOut.$lte = new Date(to);
     }
     const bookings = await Booking.find(filter);
     const total = bookings.reduce((s, b) => s + (b.totalAmount || 0), 0);
