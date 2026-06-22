@@ -24,4 +24,4 @@ app.use('/api/invoices', require('../src/modules/invoice/invoice.routes'));
 app.use('/api/reports', require('../src/modules/report/report.routes'));
 
 // Health check
-app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date() }));
+app.get('/api/health', (req, res) => res.json({ status: 'ok sang', time: new Date() }));
