@@ -36,9 +36,12 @@ function calcEarlyCheckIn(bookingType, checkInTime, dayPrices, priceConfig) {
     return { earlyH: 0, earlyCheckInCharge: 0, standardCheckIn: null };
   }
 
-  // Xây dựng mốc giờ chuẩn trong cùng ngày với checkIn
-  const standardCheckIn = new Date(checkInTime);
-  standardCheckIn.setHours(standardHour, 0, 0, 0);
+  // Xây dựng mốc giờ chuẩn theo giờ Việt Nam (UTC+7)
+  // Dùng offset cố định thay vì setHours() để tránh lỗi timezone trên server UTC
+  const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
+  const checkInVN = new Date(checkInTime.getTime() + VN_OFFSET_MS);
+  const dateStrVN = checkInVN.toISOString().slice(0, 10); // "YYYY-MM-DD" theo giờ VN
+  const standardCheckIn = new Date(`${dateStrVN}T${String(standardHour).padStart(2, '0')}:00:00+07:00`);
 
   if (checkInTime >= standardCheckIn) {
     return { earlyH: 0, earlyCheckInCharge: 0, standardCheckIn };
