@@ -21,6 +21,12 @@ function ceilWithGrace(hours, grace = 0.25) {
   return (hours - floored) > grace ? floored + 1 : floored;
 }
 
+// Lấy giờ trong ngày theo giờ Việt Nam (UTC+7), không phụ thuộc timezone server
+function getVNHour(date) {
+  const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
+  return new Date(date.getTime() + VN_OFFSET_MS).getUTCHours();
+}
+
 /**
  * Tính phụ thu check-in sớm cho overnight / fullday.
  *
@@ -32,6 +38,7 @@ function ceilWithGrace(hours, grace = 0.25) {
  */
 function calcEarlyCheckIn(bookingType, checkInTime, dayPrices, priceConfig) {
   const standardHour = STANDARD_CHECKIN_HOUR[bookingType];
+  const duration = STANDARD_DURATION_HOURS[bookingType];
   if (standardHour == null) {
     return { earlyH: 0, earlyCheckInCharge: 0, standardCheckIn: null };
   }
@@ -41,7 +48,18 @@ function calcEarlyCheckIn(bookingType, checkInTime, dayPrices, priceConfig) {
   const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
   const checkInVN = new Date(checkInTime.getTime() + VN_OFFSET_MS);
   const dateStrVN = checkInVN.toISOString().slice(0, 10); // "YYYY-MM-DD" theo giờ VN
-  const standardCheckIn = new Date(`${dateStrVN}T${String(standardHour).padStart(2, '0')}:00:00+07:00`);
+  const standardToday = new Date(`${dateStrVN}T${String(standardHour).padStart(2, '0')}:00:00+07:00`);
+
+  // BUGFIX: trước đây luôn lấy mốc chuẩn là "hôm nay", nên khách vào lúc 2h sáng
+  // (overnight, chuẩn 18h) bị hiểu nhầm là "đến sớm 16 tiếng" cho tối nay, gây
+  // tính phụ thu sai (vd 16h × 12.500đ = 200.000đ dù đáng lẽ không sớm chút nào).
+  // Thực tế 2h sáng vẫn còn nằm trong khung qua đêm của HÔM QUA
+  // (18h hôm qua → 8h sáng hôm nay), nên phải đối chiếu với mốc chuẩn hôm qua
+  // trước — nếu vẫn đang trong chu kỳ đó thì không tính là check-in sớm.
+  const standardYesterday = new Date(standardToday.getTime() - 24 * 60 * 60 * 1000);
+  const yesterdayCycleEnd = new Date(standardYesterday.getTime() + duration * 60 * 60 * 1000);
+
+  const standardCheckIn = checkInTime < yesterdayCycleEnd ? standardYesterday : standardToday;
 
   if (checkInTime >= standardCheckIn) {
     return { earlyH: 0, earlyCheckInCharge: 0, standardCheckIn };
@@ -136,11 +154,24 @@ function calculateAmount(booking, priceConfig) {
     // ── HOURLY ────────────────────────────────────────────────────────────────
   } else if (bookingType === 'hourly') {
     if (shift === 'night') {
-      // Ca đêm: giá giờ đầu cố định, mỗi giờ thêm tính extra
-      basePrice = shiftPrices.hourly_first ?? 0;
-      if (diffHours > 1) {
-        extraHours = ceilWithGrace(diffHours - 1);
-        extraCharge = extraHours * (shiftPrices.hourly_extra ?? 0);
+      // ── Quy tắc ca đêm (theo bảng giá công bố) ──────────────────────────
+      // - Khách vào trong khung 23h–24h (trước nửa đêm) và tổng thời gian ở
+      //   DƯỚI 15 tiếng → thu trọn gói bằng đúng giá "qua đêm" (không tính
+      //   theo giờ), vì khung giờ này gần trùng với khung qua đêm chuẩn.
+      // - Khách vào SAU 0h (0h–5h sáng), hoặc ở từ 15 tiếng trở lên dù vào
+      //   trước nửa đêm → tính theo giờ: giờ đầu cố định (hourly_first) +
+      //   mỗi giờ thêm (hourly_extra).
+      const checkInHourVN = getVNHour(checkInTime);
+      const isBeforeMidnightArrival = checkInHourVN >= 23; // 23h–24h(=0h)
+
+      if (isBeforeMidnightArrival && diffHours < 15) {
+        basePrice = dayPrices.overnight ?? 0;
+      } else {
+        basePrice = shiftPrices.hourly_first ?? 0;
+        if (diffHours > 1) {
+          extraHours = ceilWithGrace(diffHours - 1);
+          extraCharge = extraHours * (shiftPrices.hourly_extra ?? 0);
+        }
       }
     } else {
       // Ca ngày: <= 30 phút → hourly_first, <= 2h → hourly_2h, > 2h → + extra/giờ
@@ -467,8 +498,11 @@ exports.getRevenueStats = async (req, res) => {
     const filter = { status: 'completed' };
     if (from || to) {
       filter.checkOut = {};
-      if (from) filter.checkOut.$gte = new Date(from);
-      if (to) filter.checkOut.$lte = new Date(to);
+      // BUGFIX: "from"/"to" là ngày theo giờ VN (vd "2026-07-04"), nhưng new Date()
+      // hiểu chuỗi đó là 00:00 UTC = 7h sáng VN, làm lệch khung lọc 7 tiếng.
+      // Cộng thêm mốc giờ VN rõ ràng để khớp đúng ranh giới ngày theo giờ VN.
+      if (from) filter.checkOut.$gte = new Date(`${from}T00:00:00+07:00`);
+      if (to) filter.checkOut.$lte = new Date(`${to}T23:59:59.999+07:00`);
     }
     const bookings = await Booking.find(filter);
     const total = bookings.reduce((s, b) => s + (b.totalAmount || 0), 0);
@@ -477,7 +511,11 @@ exports.getRevenueStats = async (req, res) => {
 
     const byDay = {};
     bookings.forEach(b => {
-      const day = new Date(b.checkOut).toISOString().split('T')[0];
+      // BUGFIX: dùng toISOString() lấy ngày theo UTC, khiến checkout lúc 0h–7h sáng
+      // giờ VN (vẫn là UTC ngày hôm trước) bị gộp nhầm sang ngày trước đó.
+      const day = new Date(new Date(b.checkOut).getTime() + 7 * 60 * 60 * 1000)
+        .toISOString()
+        .split('T')[0];
       byDay[day] = (byDay[day] || 0) + (b.totalAmount || 0);
     });
 
