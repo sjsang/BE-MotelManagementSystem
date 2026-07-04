@@ -21,12 +21,6 @@ function ceilWithGrace(hours, grace = 0.25) {
   return (hours - floored) > grace ? floored + 1 : floored;
 }
 
-// Lấy giờ trong ngày theo giờ Việt Nam (UTC+7), không phụ thuộc timezone server
-function getVNHour(date) {
-  const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
-  return new Date(date.getTime() + VN_OFFSET_MS).getUTCHours();
-}
-
 /**
  * Tính phụ thu check-in sớm cho overnight / fullday.
  *
@@ -165,23 +159,15 @@ function calculateAmount(booking, priceConfig) {
   } else if (bookingType === 'hourly') {
     if (shift === 'night') {
       // ── Quy tắc ca đêm (theo bảng giá công bố) ──────────────────────────
-      // - Khách vào trong khung 23h–24h (trước nửa đêm) và tổng thời gian ở
-      //   DƯỚI 15 tiếng → thu trọn gói bằng đúng giá "qua đêm" (không tính
-      //   theo giờ), vì khung giờ này gần trùng với khung qua đêm chuẩn.
-      // - Khách vào SAU 0h (0h–5h sáng), hoặc ở từ 15 tiếng trở lên dù vào
-      //   trước nửa đêm → tính theo giờ: giờ đầu cố định (hourly_first) +
-      //   mỗi giờ thêm (hourly_extra).
-      const checkInHourVN = getVNHour(checkInTime);
-      const isBeforeMidnightArrival = checkInHourVN >= 23; // 23h–24h(=0h)
-
-      if (isBeforeMidnightArrival && diffHours < 15) {
-        basePrice = dayPrices.overnight ?? 0;
-      } else {
-        basePrice = shiftPrices.hourly_first ?? 0;
-        if (diffHours > 1) {
-          extraHours = ceilWithGrace(diffHours - 1);
-          extraCharge = extraHours * (shiftPrices.hourly_extra ?? 0);
-        }
+      // ĐỒNG BỘ với PricingPanel.jsx (frontend): panel không truyền checkInTime
+      // vào calcBillingFromConfig nên không bao giờ áp dụng case "vào 23h-24h &
+      // ở dưới 15h -> trọn gói giá qua đêm". Để backend khớp với giá hiển thị
+      // trên panel, bỏ case đặc biệt đó — luôn tính theo giờ: giờ đầu cố định
+      // (hourly_first) + mỗi giờ thêm (hourly_extra), bất kể giờ vào là mấy giờ.
+      basePrice = shiftPrices.hourly_first ?? 0;
+      if (diffHours > 1) {
+        extraHours = ceilWithGrace(diffHours - 1);
+        extraCharge = extraHours * (shiftPrices.hourly_extra ?? 0);
       }
     } else {
       // Ca ngày: <= 30 phút → hourly_first, <= 2h → hourly_2h, > 2h → + extra/giờ
