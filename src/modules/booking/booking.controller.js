@@ -3,14 +3,14 @@ const Room = require('../room/room.model');
 const PriceConfig = require('../price/price.model');
 
 // ─── Hằng số khung giờ chuẩn ─────────────────────────────────────────────────
-// overnight: check-in chuẩn 18:00, check-out chuẩn 8:00 hôm sau (14h)
+// overnight: check-in chuẩn 17:00, check-out chuẩn 8:00 hôm sau (15h)
 // fullday  : check-in chuẩn 12:00, check-out chuẩn 12:00 hôm sau (24h)
 const STANDARD_CHECKIN_HOUR = {
-  overnight: 18,
+  overnight: 17,
   fullday: 12,
 };
 const STANDARD_DURATION_HOURS = {
-  overnight: 14,
+  overnight: 15,
   fullday: 24,
 };
 
@@ -30,9 +30,9 @@ function getVNHour(date) {
 /**
  * Tính phụ thu check-in sớm cho overnight / fullday.
  *
- * Ví dụ overnight (chuẩn 18h):
- *   - Khách vào 15h → sớm 3h → earlyCheckInCharge = 3 × earlyCheckInFee
- *   - Khách vào 18h trở đi → 0đ
+ * Ví dụ overnight (chuẩn 17h):
+ *   - Khách vào 15h → sớm 2h → earlyCheckInCharge = 2 × earlyCheckInFee
+ *   - Khách vào 17h trở đi → 0đ
  *
  * @returns {{ earlyH: number, earlyCheckInCharge: number, standardCheckIn: Date }}
  */
@@ -51,15 +51,25 @@ function calcEarlyCheckIn(bookingType, checkInTime, dayPrices, priceConfig) {
   const standardToday = new Date(`${dateStrVN}T${String(standardHour).padStart(2, '0')}:00:00+07:00`);
 
   // BUGFIX: trước đây luôn lấy mốc chuẩn là "hôm nay", nên khách vào lúc 2h sáng
-  // (overnight, chuẩn 18h) bị hiểu nhầm là "đến sớm 16 tiếng" cho tối nay, gây
-  // tính phụ thu sai (vd 16h × 12.500đ = 200.000đ dù đáng lẽ không sớm chút nào).
-  // Thực tế 2h sáng vẫn còn nằm trong khung qua đêm của HÔM QUA
-  // (18h hôm qua → 8h sáng hôm nay), nên phải đối chiếu với mốc chuẩn hôm qua
+  // (overnight, chuẩn 17h) bị hiểu nhầm là "đến sớm 15 tiếng" cho tối nay, gây
+  // tính phụ thu sai. Thực tế 2h sáng vẫn còn nằm trong khung qua đêm của HÔM QUA
+  // (17h hôm qua → 8h sáng hôm nay), nên phải đối chiếu với mốc chuẩn hôm qua
   // trước — nếu vẫn đang trong chu kỳ đó thì không tính là check-in sớm.
+  //
+  // LƯU Ý: cơ chế "đối chiếu mốc hôm qua" chỉ có ý nghĩa khi thời lượng chuẩn
+  // NGẮN HƠN 24 giờ (có khoảng trống thực sự giữa "hôm qua + duration" và mốc
+  // "hôm nay", như overnight: 8h sáng → 17h). Với fullday, duration = 24h nên
+  // "hôm qua + 24h" LUÔN trùng khít với mốc "hôm nay" — nếu vẫn áp dụng cơ chế
+  // này thì bất kỳ giờ nào trước 12h trưa cũng bị đối chiếu nhầm với "hôm qua"
+  // (đã trôi qua rất lâu), khiến earlyH luôn ra 0 dù khách vào lúc 10h sáng.
+  // Do đó chỉ bật fallback "hôm qua" khi duration < 24h.
+  const hasGapFromYesterday = duration < 24;
   const standardYesterday = new Date(standardToday.getTime() - 24 * 60 * 60 * 1000);
   const yesterdayCycleEnd = new Date(standardYesterday.getTime() + duration * 60 * 60 * 1000);
 
-  const standardCheckIn = checkInTime < yesterdayCycleEnd ? standardYesterday : standardToday;
+  const standardCheckIn = (hasGapFromYesterday && checkInTime < yesterdayCycleEnd)
+    ? standardYesterday
+    : standardToday;
 
   if (checkInTime >= standardCheckIn) {
     return { earlyH: 0, earlyCheckInCharge: 0, standardCheckIn };
