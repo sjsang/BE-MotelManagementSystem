@@ -327,7 +327,7 @@ exports.getBookingById = async (req, res) => {
 exports.checkIn = async (req, res) => {
   try {
     const {
-      roomId, roomNumber, guestName, guestPhone, guestId,
+      roomId, roomNumber, guestName, guestPhone, guestId, guestCustomerId,
       bookingType, shift, expectedCheckOut, notes, services, deposit,
       lydocutru, nhaplydo
     } = req.body;
@@ -369,6 +369,7 @@ exports.checkIn = async (req, res) => {
       guestName,
       guestPhone: guestPhone || '',
       guestId: guestId || '',
+      guestCustomerId: guestCustomerId || '',
       bookingType,
       shift: shift || 'day',
       checkIn: checkInTime,
