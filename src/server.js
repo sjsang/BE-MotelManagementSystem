@@ -22,6 +22,7 @@ app.use('/api/auth', require('./modules/auth/auth.routes'));
 app.use('/api/customers', require('./modules/customer/customer.routes'));
 app.use('/api/invoices', require('./modules/invoice/invoice.routes'));
 app.use('/api/reports', require('./modules/report/report.routes'));
+app.use('/api/users', require('./modules/user/user.routes'));
 
 // Health check
 app.get('/api/health', (req, res) => res.json({ status: 'ok sang', time: new Date() }));
