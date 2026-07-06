@@ -28,10 +28,10 @@ app.use('/api/users', require('./modules/user/user.routes'));
 app.get('/api/health', (req, res) => res.json({ status: 'ok sang', time: new Date() }));
 
 // Bên dưới để deploy, đừng xóa
-// const path = require("path");
+/* const path = require("path");
 
-// app.use(express.static(path.join(__dirname, "dist")));
+app.use(express.static(path.join(__dirname, "dist")));
 
-// app.use((req, res) => {
-//   res.sendFile(path.join(__dirname, "dist", "index.html"));
-// });
+app.use((req, res) => {
+  res.sendFile(path.join(__dirname, "dist", "index.html"));
+}); */
