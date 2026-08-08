@@ -23,6 +23,16 @@ app.use('/api/customers', require('../src/modules/customer/customer.routes'));
 app.use('/api/invoices', require('../src/modules/invoice/invoice.routes'));
 app.use('/api/reports', require('../src/modules/report/report.routes'));
 app.use('/api/inventory', require('../src/modules/inventory/inventory.routes'));
+app.use('/api/users', require('./modules/user/user.routes'));
 
 // Health check
 app.get('/api/health', (req, res) => res.json({ status: 'ok sang', time: new Date() }));
+
+// Bên dưới để deploy, đừng xóa
+/* const path = require("path");
+
+app.use(express.static(path.join(__dirname, "dist")));
+
+app.use((req, res) => {
+  res.sendFile(path.join(__dirname, "dist", "index.html"));
+}); */

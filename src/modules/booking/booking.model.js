@@ -6,6 +6,7 @@ const bookingSchema = new mongoose.Schema({
   guestName: { type: String, required: true },
   guestPhone: { type: String, default: '' },
   guestId: { type: String, default: '' }, // CMND/CCCD
+  guestCustomerId: { type: String, default: '' }, // ID của Customer trong MongoDB
 
   // Loại đặt phòng
   bookingType: {
