@@ -99,14 +99,20 @@ exports.getServices = async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 };
 
-// POST /prices/:id/services — thêm dịch vụ { name, price, unit? }
+// POST /prices/:id/services — thêm dịch vụ { name, price, unit?, quantity?, trackInventory? }
 exports.addService = async (req, res) => {
   try {
-    const { name, price, unit } = req.body;
+    const { name, price, unit, quantity, trackInventory } = req.body;
     if (!name || price == null) return res.status(400).json({ error: 'Thiếu name hoặc price' });
     const config = await PriceConfig.findById(req.params.id);
     if (!config) return res.status(404).json({ error: 'Không tìm thấy bảng giá' });
-    config.services.push({ name, price: Number(price), unit: unit || 'cái' });
+    config.services.push({
+      name,
+      price: Number(price),
+      unit: unit || 'cái',
+      quantity: quantity != null ? Number(quantity) : 0,
+      trackInventory: trackInventory !== false && trackInventory !== 'false',
+    });
     await config.save();
     res.status(201).json(config.services[config.services.length - 1]);
   } catch (err) { res.status(400).json({ error: err.message }); }
@@ -118,9 +124,11 @@ exports.updateService = async (req, res) => {
     const result = await getConfigAndService(req, res);
     if (!result) return;
     const { config, svc } = result;
-    if (req.body.name  != null) svc.name  = req.body.name;
-    if (req.body.price != null) svc.price = Number(req.body.price);
-    if (req.body.unit  != null) svc.unit  = req.body.unit;
+    if (req.body.name           != null) svc.name           = req.body.name;
+    if (req.body.price          != null) svc.price          = Number(req.body.price);
+    if (req.body.unit           != null) svc.unit           = req.body.unit;
+    if (req.body.quantity       != null) svc.quantity       = Number(req.body.quantity);
+    if (req.body.trackInventory  != null) svc.trackInventory  = Boolean(req.body.trackInventory);
     await config.save();
     res.json(svc);
   } catch (err) { res.status(400).json({ error: err.message }); }

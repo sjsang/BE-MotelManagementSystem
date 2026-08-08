@@ -46,6 +46,8 @@ const priceConfigSchema = new mongoose.Schema({
     name:  { type: String,  required: true },
     price: { type: Number, required: true, min: 0 },
     unit:  { type: String,  default: 'cái' },
+    quantity: { type: Number, default: 0, min: 0 },
+    trackInventory: { type: Boolean, default: true },
   }],
 
   // Áp dụng từ ngày / đến ngày (null = không giới hạn)
