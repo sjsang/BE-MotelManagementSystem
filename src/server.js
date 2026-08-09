@@ -15,13 +15,14 @@ app.listen(process.env.PORT || 5000, () => {
 });
 
 // Routes
-app.use('/api/rooms', require('./modules/room/room.routes'));
-app.use('/api/bookings', require('./modules/booking/booking.routes'));
-app.use('/api/prices', require('./modules/price/price.routes'));
-app.use('/api/auth', require('./modules/auth/auth.routes'));
-app.use('/api/customers', require('./modules/customer/customer.routes'));
-app.use('/api/invoices', require('./modules/invoice/invoice.routes'));
-app.use('/api/reports', require('./modules/report/report.routes'));
+app.use('/api/rooms', require('../src/modules/room/room.routes'));
+app.use('/api/bookings', require('../src/modules/booking/booking.routes'));
+app.use('/api/prices', require('../src/modules/price/price.routes'));
+app.use('/api/auth', require('../src/modules/auth/auth.routes'));
+app.use('/api/customers', require('../src/modules/customer/customer.routes'));
+app.use('/api/invoices', require('../src/modules/invoice/invoice.routes'));
+app.use('/api/reports', require('../src/modules/report/report.routes'));
+app.use('/api/inventory', require('../src/modules/inventory/inventory.routes'));
 app.use('/api/users', require('./modules/user/user.routes'));
 
 // Health check

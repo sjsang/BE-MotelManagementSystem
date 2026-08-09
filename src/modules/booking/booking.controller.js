@@ -1,6 +1,94 @@
 const Booking = require('../booking/booking.model');
 const Room = require('../room/room.model');
 const PriceConfig = require('../price/price.model');
+const InventorySlip = require('../inventory/inventory.model');
+
+// Helper tự động tạo phiếu xuất kho khi phòng order/cập nhật dịch vụ
+async function processRoomServiceInventory(booking, oldServices, newServices) {
+  try {
+    if (!newServices || !Array.isArray(newServices)) return;
+
+    let priceConfig = await PriceConfig.findOne({ isActive: true });
+    if (!priceConfig) priceConfig = await PriceConfig.findOne();
+    if (!priceConfig) return;
+
+    const oldMap = new Map();
+    (oldServices || []).forEach(s => {
+      if (s && s.name) {
+        oldMap.set(s.name.trim().toLowerCase(), s.quantity || 1);
+      }
+    });
+
+    const exportItems = [];
+    let totalQty = 0;
+    let totalAmt = 0;
+
+    for (const newSvc of newServices) {
+      if (!newSvc || !newSvc.name) continue;
+      const nameKey = newSvc.name.trim().toLowerCase();
+      const oldQty = oldMap.get(nameKey) || 0;
+      const newQty = Number(newSvc.quantity) || 1;
+      const diffQty = newQty - oldQty;
+
+      if (diffQty > 0) {
+        let pcSvc = priceConfig.services.find(s => s.name.trim().toLowerCase() === nameKey);
+        // Chỉ thực hiện trừ tồn kho & xuất phiếu nếu dịch vụ ĐƯỢC quản lý kho (trackInventory !== false)
+        if (pcSvc && pcSvc.trackInventory !== false) {
+          const currentQty = pcSvc.quantity || 0;
+          if (diffQty > currentQty) {
+            throw new Error(`Dịch vụ "${pcSvc.name}" không đủ tồn kho (Còn tồn: ${currentQty} ${pcSvc.unit || 'cái'}, Thêm: ${diffQty} ${pcSvc.unit || 'cái'})`);
+          }
+          pcSvc.quantity = currentQty - diffQty;
+
+          const price = newSvc.price != null ? Number(newSvc.price) : (pcSvc ? pcSvc.price : 0);
+          const itemTotal = price * diffQty;
+
+          exportItems.push({
+            serviceId: pcSvc._id,
+            serviceName: newSvc.name,
+            unit: pcSvc.unit || 'cái',
+            price: price,
+            quantity: diffQty,
+            totalAmount: itemTotal,
+          });
+
+          totalQty += diffQty;
+          totalAmt += itemTotal;
+        }
+      }
+    }
+
+    if (exportItems.length > 0) {
+      await priceConfig.save();
+
+      const now = new Date();
+      const dateStr = now.getFullYear().toString() +
+        String(now.getMonth() + 1).padStart(2, '0') +
+        String(now.getDate()).padStart(2, '0');
+      
+      const codePrefix = `XK${dateStr}`;
+      const count = await InventorySlip.countDocuments({ code: new RegExp(`^${codePrefix}`) });
+      const slipCode = `${codePrefix}-${String(count + 1).padStart(3, '0')}`;
+
+      const slip = new InventorySlip({
+        code: slipCode,
+        type: 'export',
+        date: new Date(),
+        items: exportItems,
+        totalQuantity: totalQty,
+        totalAmount: totalAmt,
+        notes: `Xuất kho tự động cho Phòng ${booking.roomNumber} (Khách: ${booking.guestName || 'Khách lẻ'})`,
+        roomNumber: booking.roomNumber,
+        bookingId: booking._id,
+        created_by: 'Tự động (Room Order)',
+      });
+
+      await slip.save();
+    }
+  } catch (err) {
+    console.error('Lỗi khi tự động xuất kho cho phòng:', err.message);
+  }
+}
 
 // ─── Hằng số khung giờ chuẩn ─────────────────────────────────────────────────
 // overnight: check-in chuẩn 17:00, check-out chuẩn 8:00 hôm sau (15h)
@@ -389,6 +477,10 @@ exports.checkIn = async (req, res) => {
     room.status = 'occupied';
     await room.save();
 
+    if (services && services.length > 0) {
+      await processRoomServiceInventory(booking, [], services);
+    }
+
     res.status(201).json(booking);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -403,6 +495,7 @@ exports.checkOut = async (req, res) => {
     if (booking.status !== 'active') return res.status(400).json({ error: 'Booking không active' });
 
     const priceConfig = await PriceConfig.findOne({ isActive: true });
+    const oldServices = booking.services ? booking.services.map(s => s.toObject ? s.toObject() : s) : [];
     booking.checkOut = new Date();
     booking.services = req.body.services || booking.services;
     booking.notes = req.body.notes || booking.notes;
@@ -424,6 +517,10 @@ exports.checkOut = async (req, res) => {
     booking.status = 'completed';
     await booking.save();
 
+    if (req.body.services) {
+      await processRoomServiceInventory(booking, oldServices, req.body.services);
+    }
+
     const room = await Room.findById(booking.room);
     if (room) { room.status = 'cleaning'; await room.save(); }
 
@@ -441,8 +538,17 @@ exports.updateBooking = async (req, res) => {
       const user = await User.findById(req.user.id);
       if (user) req.body.reported_by = user.username;
     }
+    const existingBooking = await Booking.findById(req.params.id);
+    if (!existingBooking) return res.status(404).json({ error: 'Không tìm thấy booking' });
+
+    const oldServices = existingBooking.services ? existingBooking.services.map(s => s.toObject ? s.toObject() : s) : [];
+
     const booking = await Booking.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    if (!booking) return res.status(404).json({ error: 'Không tìm thấy booking' });
+
+    if (req.body.services) {
+      await processRoomServiceInventory(booking, oldServices, req.body.services);
+    }
+
     res.json(booking);
   } catch (err) {
     res.status(400).json({ error: err.message });
