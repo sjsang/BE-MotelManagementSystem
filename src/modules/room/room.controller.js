@@ -9,10 +9,22 @@ exports.getAllRooms = async (req, res) => {
     const bookingMap = {};
     activeBookings.forEach(b => { bookingMap[b.roomNumber] = b; });
 
-    const result = rooms.map(r => ({
-      ...r.toObject(),
-      currentBooking: bookingMap[r.roomNumber] || null
-    }));
+    const result = [];
+    for (const r of rooms) {
+      const currentBooking = bookingMap[r.roomNumber] || null;
+      
+      // Tự động sửa lỗi lệch đồng bộ trạng thái (Self-Healing)
+      if (r.status === 'occupied' && !currentBooking) {
+        r.status = 'available';
+        await Room.findByIdAndUpdate(r._id, { status: 'available' });
+      }
+      
+      result.push({
+        ...r.toObject(),
+        status: r.status === 'occupied' && !currentBooking ? 'available' : r.status,
+        currentBooking
+      });
+    }
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -25,7 +37,18 @@ exports.getRoomById = async (req, res) => {
     const room = await Room.findById(req.params.id);
     if (!room) return res.status(404).json({ error: 'Không tìm thấy phòng' });
     const booking = await Booking.findOne({ roomNumber: room.roomNumber, status: 'active' });
-    res.json({ ...room.toObject(), currentBooking: booking });
+    
+    // Tự động sửa lỗi lệch đồng bộ trạng thái (Self-Healing)
+    if (room.status === 'occupied' && !booking) {
+      room.status = 'available';
+      await Room.findByIdAndUpdate(room._id, { status: 'available' });
+    }
+
+    res.json({
+      ...room.toObject(),
+      status: room.status === 'occupied' && !booking ? 'available' : room.status,
+      currentBooking: booking
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
