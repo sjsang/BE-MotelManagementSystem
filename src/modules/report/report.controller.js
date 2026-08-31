@@ -440,35 +440,60 @@ exports.exportBCA = async (req, res) => {
         const getStatsByNationality = async (startDate, endDate) => {
             const bookings = await Booking.find({
                 status: { $in: ['active', 'completed'] },
-                $or: [
-                    { checkIn: { $gte: startDate, $lte: endDate } },
-                    { checkOut: { $gte: startDate, $lte: endDate } }
-                ]
+                checkIn: { $gte: startDate, $lte: endDate }
             }).lean();
 
-            const guestIds = bookings.map(b => b.guestId).filter(id => id);
+            // Gom tất cả guestCustomerId từ mọi booking
+            const allCustIds = [];
+            for (const b of bookings) {
+                if (b.guestCustomerId) {
+                    b.guestCustomerId.split(',')
+                        .map(id => id.trim())
+                        .filter(id => id !== '')
+                        .forEach(id => allCustIds.push(id));
+                }
+            }
+
+            // Query Customer một lần duy nhất
             const customers = await Customer.find({
-                $or: [{ cccd: { $in: guestIds } }, { passport: { $in: guestIds } }]
+                _id: { $in: allCustIds }
             }).lean();
 
             const customerMap = {};
             for (const c of customers) {
-                if (c.cccd) customerMap[c.cccd] = c;
-                if (c.passport) customerMap[c.passport] = c;
+                customerMap[String(c._id)] = c;
             }
 
             const stats = {};
             for (const b of bookings) {
-                const cus = customerMap[b.guestId] || {};
-                const nat = (cus.quoctich || 'Việt Nam').trim();
-                stats[nat] = (stats[nat] || 0) + 1;
+                if (b.guestCustomerId) {
+                    const custIds = b.guestCustomerId.split(',')
+                        .map(id => id.trim())
+                        .filter(id => id !== '');
+
+                    if (custIds.length > 0) {
+                        for (const id of custIds) {
+                            const cus = customerMap[id] || {};
+                            const nat = (cus.quoctich || 'VNM - Viet Nam').trim();
+                            stats[nat] = (stats[nat] || 0) + 1;
+                        }
+                        continue;
+                    }
+                }
+
+                // Fallback: không có guestCustomerId → đếm theo guestName
+                const nameCount = b.guestName
+                    ? b.guestName.split(',').filter(n => n.trim() !== '').length
+                    : 1;
+                stats['VNM - Viet Nam'] = (stats['VNM - Viet Nam'] || 0) + Math.max(nameCount, 1);
             }
+
             return stats;
         };
 
         const currStats = await getStatsByNationality(from, to);
 
-        // Tính toán khoảng thời gian dùng dayjs để an toàn hơn
+        // Tính khoảng thời gian kỳ trước (cùng độ dài)
         const fromObj = dayjs(from);
         const toObj = dayjs(to);
         const durationMs = toObj.diff(fromObj);
@@ -478,11 +503,33 @@ exports.exportBCA = async (req, res) => {
 
         const prevStats = await getStatsByNationality(prevFrom, prevTo);
 
-        const allNats = Array.from(new Set([...Object.keys(currStats), ...Object.keys(prevStats)])).sort((a, b) => {
-            if (a.toLowerCase() === 'việt nam') return -1;
-            if (b.toLowerCase() === 'việt nam') return 1;
+        const allNats = Array.from(new Set([
+            ...Object.keys(currStats),
+            ...Object.keys(prevStats)
+        ])).sort((a, b) => {
+            if (a.toLowerCase() === 'vnm - viet nam') return -1;
+            if (b.toLowerCase() === 'vnm - viet nam') return 1;
             return a.localeCompare(b);
         });
+
+        // Tính Quý và Năm theo lịch BCA
+        const reportMonth = toObj.tz(TZ).month() + 1;
+        let reportYear = toObj.tz(TZ).year();
+        let reportQuarter;
+
+        if (reportMonth === 12) {
+            reportQuarter = 1;
+            reportYear = reportYear + 1;
+        } else if (reportMonth <= 2) {
+            reportQuarter = 1;
+        } else if (reportMonth <= 5) {
+            reportQuarter = 2;
+        } else if (reportMonth <= 8) {
+            reportQuarter = 3;
+        } else {
+            // tháng 9-11
+            reportQuarter = 4;
+        }
 
         const workbook = new ExcelJS.Workbook();
         workbook.creator = 'Hệ thống';
@@ -494,10 +541,6 @@ exports.exportBCA = async (req, res) => {
         ws.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
 
         ws.mergeCells('A2:E2');
-        // Sử dụng timezone để lấy năm, quý an toàn
-        const reportYear = toObj.tz(TZ).year();
-        const reportQuarter = Math.ceil((toObj.tz(TZ).month() + 1) / 3);
-
         ws.getCell('A2').value = `Tình hình, kết quả kinh doanh dịch vụ lưu trú - Quý ${reportQuarter} Năm ${reportYear}`;
         ws.getCell('A2').font = { bold: true, size: 12, name: 'Times New Roman' };
         ws.getCell('A2').alignment = { horizontal: 'center', vertical: 'middle' };
@@ -520,12 +563,9 @@ exports.exportBCA = async (req, res) => {
         cellA5.value = '                               Phân tích\n\nQuốc tịch';
         cellA5.font = { bold: true, name: 'Times New Roman', size: 12 };
         cellA5.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
-
         cellA5.border = {
-            top: { style: 'thin' },
-            left: { style: 'thin' },
-            bottom: { style: 'thin' },
-            right: { style: 'thin' },
+            top: { style: 'thin' }, left: { style: 'thin' },
+            bottom: { style: 'thin' }, right: { style: 'thin' },
             diagonal: { up: false, down: true, style: 'thin' }
         };
 
@@ -579,14 +619,7 @@ exports.exportBCA = async (req, res) => {
 
             totalCurr += curr;
 
-            const dataRow = ws.addRow([
-                nat,
-                curr || '',
-                tang,
-                giam,
-                ''
-            ]);
-
+            const dataRow = ws.addRow([nat, curr || '', tang, giam, '']);
             dataRow.eachCell({ includeEmpty: true }, cell => {
                 cell.font = { name: 'Times New Roman' };
                 cell.border = {
@@ -597,13 +630,7 @@ exports.exportBCA = async (req, res) => {
             });
         }
 
-        const sumRow = ws.addRow([
-            'Tổng số',
-            totalCurr || '',
-            totalInc || '',
-            totalDec || '',
-            ''
-        ]);
+        const sumRow = ws.addRow(['Tổng số', totalCurr || '', totalInc || '', totalDec || '', '']);
         sumRow.eachCell({ includeEmpty: true }, cell => {
             cell.font = { bold: true, name: 'Times New Roman' };
             cell.border = {
@@ -631,7 +658,7 @@ exports.exportBCA = async (req, res) => {
         sigRow3.getCell(4).alignment = { horizontal: 'center' };
         ws.mergeCells(`D${sigRow3.number}:E${sigRow3.number}`);
 
-        const fileName = `PhuLuc_TT30_BCA_${fromObj.tz(TZ).format('YYYY-MM-DD')}.xlsx`;
+        const fileName = `PhuLuc_TT30_BCA_Quy${reportQuarter}_${reportYear}.xlsx`;
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
 
